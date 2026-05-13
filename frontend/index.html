@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Auxilizium — Mentor Matcher</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:       #09090f;
+      --surface:  #111118;
+      --border:   #1e1e2e;
+      --accent:   #7c3aed;
+      --green:    #34d399;
+      --muted:    #4b5563;
+      --text:     #e2e8f0;
+      --subtext:  #94a3b8;
+    }
+    body {
+      font-family: 'IBM Plex Mono', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+    header h1 {
+      font-family: 'Syne', sans-serif;
+      font-size: 2rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #7c3aed, #34d399);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    header p { color: var(--muted); font-size: 0.75rem; margin-top: 0.4rem; letter-spacing: 0.1em; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 1.75rem;
+      width: 100%;
+      max-width: 640px;
+      margin-bottom: 1.25rem;
+    }
+    .card h2 {
+      font-family: 'Syne', sans-serif;
+      font-size: 0.85rem;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 1.25rem;
+    }
+
+    .form-row { display: flex; flex-direction: column; gap: 0.9rem; }
+    label { font-size: 0.7rem; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 0.3rem; display: block; }
+    input, select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.7rem 1rem;
+      color: var(--text);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.85rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus, select:focus { border-color: var(--accent); }
+    select option { background: var(--surface); }
+
+    button.primary {
+      width: 100%;
+      margin-top: 1rem;
+      padding: 0.85rem;
+      background: var(--accent);
+      border: none;
+      border-radius: 10px;
+      color: #fff;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 0.9rem;
+      letter-spacing: 0.08em;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button.primary:hover { opacity: 0.85; }
+    button.primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Results */
+    .results { display: flex; flex-direction: column; gap: 0.75rem; }
+    .match-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.1rem 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      transition: border-color 0.2s;
+    }
+    .match-card:hover { border-color: #2e2e4e; }
+    .match-card.top { border-color: rgba(52,211,153,0.3); }
+
+    .score-ring {
+      width: 52px; height: 52px;
+      flex-shrink: 0;
+      position: relative;
+    }
+    .score-ring svg { transform: rotate(-90deg); }
+    .score-label {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .match-info { flex: 1; min-width: 0; }
+    .match-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.95rem; color: var(--text); }
+    .match-meta { font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; }
+    .match-reason { font-size: 0.72rem; color: var(--subtext); margin-top: 0.4rem; line-height: 1.5; }
+    .top-badge {
+      font-size: 0.6rem;
+      padding: 0.15rem 0.5rem;
+      background: rgba(52,211,153,0.1);
+      border: 1px solid rgba(52,211,153,0.3);
+      border-radius: 20px;
+      color: var(--green);
+      letter-spacing: 0.1em;
+    }
+
+    button.book-btn {
+      padding: 0.45rem 1rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--subtext);
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.7rem;
+      cursor: pointer;
+      transition: all 0.15s;
+      flex-shrink: 0;
+    }
+    button.book-btn:hover { border-color: var(--green); color: var(--green); }
+    button.book-btn.booked { border-color: var(--green); color: var(--green); cursor: default; }
+
+    .status-msg {
+      font-size: 0.75rem;
+      text-align: center;
+      padding: 0.75rem;
+      border-radius: 8px;
+      margin-top: 0.5rem;
+    }
+    .status-msg.success { background: rgba(52,211,153,0.08); color: var(--green); border: 1px solid rgba(52,211,153,0.2); }
+    .status-msg.error   { background: rgba(239,68,68,0.08);  color: #f87171;      border: 1px solid rgba(239,68,68,0.2); }
+
+    .loading { text-align: center; color: var(--muted); font-size: 0.8rem; padding: 1.5rem; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+    .loading span { animation: pulse 1.2s infinite; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>AUXILIZIUM</h1>
+  <p>AI-POWERED MENTOR MATCHING</p>
+</header>
+
+<!-- Input form -->
+<div class="card">
+  <h2>▸ MENTEE DETAILS</h2>
+  <div class="form-row">
+    <div>
+      <label>MENTEE NAME</label>
+      <input id="name" type="text" placeholder="e.g. Alex Johnson"/>
+    </div>
+    <div>
+      <label>GRADE</label>
+      <select id="grade">
+        <option value="9">Grade 9</option>
+        <option value="10">Grade 10</option>
+        <option value="11">Grade 11</option>
+        <option value="12">Grade 12</option>
+      </select>
+    </div>
+    <div>
+      <label>SUBJECT NEEDED</label>
+      <select id="subject">
+        <option value="Math">Math</option>
+        <option value="Physics">Physics</option>
+        <option value="Chemistry">Chemistry</option>
+        <option value="Biology">Biology</option>
+        <option value="English">English</option>
+      </select>
+    </div>
+  </div>
+  <button class="primary" id="find-btn" onclick="findMatches()">FIND MATCHES →</button>
+</div>
+
+<!-- Results -->
+<div class="card" id="results-card" style="display:none">
+  <h2>▸ RANKED MATCHES</h2>
+  <div class="results" id="results"></div>
+  <div id="status-msg"></div>
+</div>
+
+<script>
+  const API = "http://localhost:8000";
+  let currentMentee = null;
+
+  function scoreColor(score) {
+    if (score >= 0.75) return "#34d399";
+    if (score >= 0.5)  return "#fbbf24";
+    return "#f87171";
+  }
+
+  function ScoreRing(score) {
+    const r   = 22;
+    const circ = 2 * Math.PI * r;
+    const dash = circ * score;
+    const color = scoreColor(score);
+    return `
+      <div class="score-ring">
+        <svg width="52" height="52" viewBox="0 0 52 52">
+          <circle cx="26" cy="26" r="${r}" fill="none" stroke="#1e1e2e" stroke-width="4"/>
+          <circle cx="26" cy="26" r="${r}" fill="none"
+            stroke="${color}" stroke-width="4"
+            stroke-dasharray="${dash} ${circ}"
+            stroke-linecap="round"/>
+        </svg>
+        <div class="score-label">${Math.round(score * 100)}%</div>
+      </div>`;
+  }
+
+  async function findMatches() {
+    const name    = document.getElementById("name").value.trim();
+    const grade   = parseInt(document.getElementById("grade").value);
+    const subject = document.getElementById("subject").value;
+
+    if (!name) { alert("Please enter the mentee's name"); return; }
+
+    currentMentee = { name, grade, subject };
+    const btn = document.getElementById("find-btn");
+    btn.disabled = true;
+    btn.textContent = "SEARCHING...";
+
+    document.getElementById("results-card").style.display = "block";
+    document.getElementById("results").innerHTML = `<div class="loading"><span>Finding best matches using RAG + your trained model...</span></div>`;
+    document.getElementById("status-msg").innerHTML = "";
+
+    try {
+      const res  = await fetch(`${API}/match`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mentee_name: name, mentee_grade: grade, mentee_subject: subject }),
+      });
+      const data = await res.json();
+      renderMatches(data.matches);
+    } catch (err) {
+      document.getElementById("results").innerHTML =
+        `<div class="status-msg error">Could not connect to backend. Is the server running?</div>`;
+    }
+
+    btn.disabled = false;
+    btn.textContent = "FIND MATCHES →";
+  }
+
+  function renderMatches(matches) {
+    const el = document.getElementById("results");
+    el.innerHTML = matches.map((m, i) => `
+      <div class="match-card ${i === 0 ? 'top' : ''}">
+        ${ScoreRing(m.match_score)}
+        <div class="match-info">
+          <div style="display:flex;align-items:center;gap:0.6rem">
+            <span class="match-name">${m.name}</span>
+            ${i === 0 ? '<span class="top-badge">BEST MATCH</span>' : ''}
+          </div>
+          <div class="match-meta">Grade ${m.grade} · ${m.subject} · ${m.qualifications}</div>
+          <div class="match-reason">${m.explanation}</div>
+        </div>
+        <button class="book-btn" id="book-${i}" onclick="book(${i}, this)"
+          data-mentor='${JSON.stringify(m)}'>
+          BOOK
+        </button>
+      </div>
+    `).join("");
+  }
+
+  async function book(idx, btn) {
+    if (!currentMentee) return;
+    const mentor = JSON.parse(btn.dataset.mentor);
+    btn.textContent = "...";
+    btn.disabled = true;
+
+    try {
+      await fetch(`${API}/book`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mentor_name:  mentor.name,
+          mentee_name:  currentMentee.name,
+          subject:      currentMentee.subject,
+          mentor_grade: mentor.grade,
+          mentee_grade: currentMentee.grade,
+          match_score:  mentor.match_score,
+          explanation:  mentor.explanation,
+        }),
+      });
+      btn.textContent = "✓ BOOKED";
+      btn.classList.add("booked");
+      document.getElementById("status-msg").innerHTML =
+        `<div class="status-msg success">Pairing saved: ${currentMentee.name} → ${mentor.name}</div>`;
+    } catch {
+      btn.textContent = "BOOK";
+      btn.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Auxilizium — Mentor Chat</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #07070d;
+      --surface:   #0e0e18;
+      --surface2:  #141420;
+      --border:    #1c1c2e;
+      --border2:   #252538;
+      --accent:    #7c3aed;
+      --accent-l:  #a78bfa;
+      --green:     #34d399;
+      --green-d:   #065f46;
+      --amber:     #fbbf24;
+      --red:       #f87171;
+      --text:      #e2e8f0;
+      --subtext:   #94a3b8;
+      --muted:     #4b5563;
+      --font:      'JetBrains Mono', monospace;
+    }
+
+    html, body { height: 100%; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 1rem;
+      /* Subtle grid background */
+      background-image:
+        linear-gradient(rgba(124,58,237,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(124,58,237,0.03) 1px, transparent 1px);
+      background-size: 32px 32px;
+    }
+
+    /* ── Shell wrapper ── */
+    .shell {
+      width: 100%;
+      max-width: 680px;
+      height: 90vh;
+      max-height: 820px;
+      display: flex;
+      flex-direction: column;
+      background: var(--surface);
+      border: 1px solid var(--border2);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 1px rgba(124,58,237,0.1),
+        0 32px 80px rgba(0,0,0,0.6);
+    }
+
+    /* ── Title bar ── */
+    .titlebar {
+      padding: 0.85rem 1.25rem;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-shrink: 0;
+    }
+    .dots { display: flex; gap: 6px; }
+    .dot {
+      width: 11px; height: 11px;
+      border-radius: 50%;
+    }
+    .dot.r { background: #ff5f57; }
+    .dot.y { background: #febc2e; }
+    .dot.g { background: #28c840; }
+
+    .titlebar-center {
+      flex: 1;
+      text-align: center;
+    }
+    .titlebar-center span {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 0.8rem;
+      letter-spacing: 0.2em;
+      background: linear-gradient(90deg, var(--accent-l), var(--green));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .titlebar-right {
+      font-size: 0.6rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+    }
+
+    /* ── Messages ── */
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.5rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      scroll-behavior: smooth;
+    }
+    .messages::-webkit-scrollbar { width: 3px; }
+    .messages::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+    /* ── Message rows ── */
+    .msg-row {
+      display: flex;
+      gap: 0.75rem;
+      align-items: flex-start;
+      animation: fadeUp 0.25s ease forwards;
+    }
+    .msg-row.user { flex-direction: row-reverse; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Avatars ── */
+    .avatar {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.6rem; font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 2px;
+      letter-spacing: 0.05em;
+    }
+    .msg-row.bot  .avatar { background: linear-gradient(135deg, var(--accent), #4f46e5); color: #fff; }
+    .msg-row.user .avatar { background: var(--surface2); border: 1px solid var(--border2); color: var(--muted); }
+
+    /* ── Bubbles ── */
+    .bubble {
+      max-width: 78%;
+      padding: 0.75rem 1rem;
+      border-radius: 12px;
+      font-size: 0.82rem;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg-row.bot .bubble {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-top-left-radius: 3px;
+      color: var(--text);
+    }
+    .msg-row.user .bubble {
+      background: var(--accent);
+      border-top-right-radius: 3px;
+      color: #fff;
+    }
+
+    /* Match score bars inside bot bubbles */
+    .bubble .score-line {
+      font-family: var(--font);
+      color: var(--green);
+      font-size: 0.75rem;
+    }
+
+    /* ── Typing indicator ── */
+    .typing .bubble {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      padding: 0.85rem 1.1rem;
+      border-top-left-radius: 3px;
+    }
+    .dots-anim { display: flex; gap: 5px; align-items: center; }
+    .dots-anim span {
+      width: 6px; height: 6px;
+      background: var(--muted);
+      border-radius: 50%;
+      animation: blink 1.2s infinite;
+    }
+    .dots-anim span:nth-child(2) { animation-delay: 0.2s; }
+    .dots-anim span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink {
+      0%,60%,100% { opacity: 0.3; transform: scale(1); }
+      30% { opacity: 1; transform: scale(1.3); }
+    }
+
+    /* ── Quick replies ── */
+    .quick-area {
+      padding: 0.5rem 1.25rem 0;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+    .qr {
+      padding: 0.35rem 0.8rem;
+      border: 1px solid var(--border2);
+      border-radius: 20px;
+      background: transparent;
+      color: var(--subtext);
+      font-family: var(--font);
+      font-size: 0.72rem;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .qr:hover { border-color: var(--accent-l); color: var(--accent-l); }
+
+    /* ── Input bar ── */
+    .input-bar {
+      padding: 1rem 1.25rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 0.6rem;
+      align-items: flex-end;
+      background: var(--surface2);
+      flex-shrink: 0;
+    }
+    .input-wrap {
+      flex: 1;
+      position: relative;
+    }
+    .prompt-symbol {
+      position: absolute;
+      left: 0.85rem;
+      bottom: 0.72rem;
+      color: var(--accent);
+      font-size: 0.8rem;
+      pointer-events: none;
+    }
+    textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      padding: 0.7rem 1rem 0.7rem 1.8rem;
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 0.82rem;
+      resize: none;
+      outline: none;
+      line-height: 1.5;
+      max-height: 100px;
+      transition: border-color 0.2s;
+    }
+    textarea:focus { border-color: var(--accent); }
+    textarea::placeholder { color: var(--muted); }
+
+    .send-btn {
+      width: 40px; height: 40px;
+      border-radius: 10px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.15s;
+    }
+    .send-btn:hover:not(:disabled) { background: var(--accent-l); }
+    .send-btn:active { transform: scale(0.95); }
+    .send-btn:disabled { background: var(--border2); cursor: not-allowed; }
+    .send-btn svg { width: 16px; height: 16px; }
+  </style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- Title bar -->
+  <div class="titlebar">
+    <div class="dots">
+      <div class="dot r"></div>
+      <div class="dot y"></div>
+      <div class="dot g"></div>
+    </div>
+    <div class="titlebar-center"><span>AUXILIZIUM MENTOR MATCHER</span></div>
+    <div class="titlebar-right">v1.0</div>
+  </div>
+
+  <!-- Messages -->
+  <div class="messages" id="messages"></div>
+
+  <!-- Quick replies -->
+  <div class="quick-area" id="quick-area">
+    <button class="qr" onclick="send('find match')">find match</button>
+    <button class="qr" onclick="send('history')">past pairings</button>
+    <button class="qr" onclick="send('help')">help</button>
+  </div>
+
+  <!-- Input -->
+  <div class="input-bar">
+    <div class="input-wrap">
+      <span class="prompt-symbol">›</span>
+      <textarea id="input" rows="1" placeholder="type a message…"></textarea>
+    </div>
+    <button class="send-btn" id="send-btn" onclick="send()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <line x1="22" y1="2" x2="11" y2="13"/>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+      </svg>
+    </button>
+  </div>
+
+</div>
+
+<script>
+  const API        = "http://localhost:8000";
+  const SESSION_ID = "session_" + Math.random().toString(36).slice(2, 9);
+
+  const messagesEl  = document.getElementById("messages");
+  const inputEl     = document.getElementById("input");
+  const sendBtn     = document.getElementById("send-btn");
+  const quickArea   = document.getElementById("quick-area");
+
+  // Auto-resize textarea
+  inputEl.addEventListener("input", () => {
+    inputEl.style.height = "auto";
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + "px";
+  });
+  inputEl.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+
+  function scrollBottom() {
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function addMessage(role, text) {
+    // Hide quick replies after first user message
+    if (role === "user") quickArea.innerHTML = "";
+
+    const row    = document.createElement("div");
+    row.className = `msg-row ${role}`;
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    avatar.textContent = role === "bot" ? "AUX" : "YOU";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+
+    // Colour score bars green
+    bubble.innerHTML = text
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+      .replace(/(█+░*)/g, '<span class="score-line">$1</span>');
+
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    messagesEl.appendChild(row);
+    scrollBottom();
+    return row;
+  }
+
+  function showTyping() {
+    const row    = document.createElement("div");
+    row.className = "msg-row bot typing";
+    row.id        = "typing";
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    avatar.textContent = "AUX";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.innerHTML  = '<div class="dots-anim"><span></span><span></span><span></span></div>';
+
+    row.appendChild(avatar);
+    row.appendChild(bubble);
+    messagesEl.appendChild(row);
+    scrollBottom();
+  }
+  function hideTyping() {
+    const el = document.getElementById("typing");
+    if (el) el.remove();
+  }
+
+  async function send(override) {
+    const text = (override || inputEl.value).trim();
+    if (!text) return;
+
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+    sendBtn.disabled = true;
+
+    addMessage("user", text);
+    showTyping();
+
+    try {
+      const res  = await fetch(`${API}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: SESSION_ID, message: text }),
+      });
+      const data = await res.json();
+      hideTyping();
+      addMessage("bot", data.reply);
+
+      // Show contextual quick replies based on state
+      updateQuickReplies(data.state, data.matches);
+
+    } catch {
+      hideTyping();
+      addMessage("bot", "Could not reach the server.\nMake sure the backend is running:\n\n  uvicorn api.main:app --reload");
+    }
+
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+
+  function updateQuickReplies(state, matches) {
+    quickArea.innerHTML = "";
+    const btns = [];
+
+    if (state === "showing_results" && matches && matches.length) {
+      matches.slice(0, 3).forEach((_, i) =>
+        btns.push(`book ${i + 1}`)
+      );
+      btns.push("restart");
+    } else if (state === "idle") {
+      btns.push("find match", "history", "help");
+    }
+
+    btns.forEach(label => {
+      const b = document.createElement("button");
+      b.className   = "qr";
+      b.textContent = label;
+      b.onclick     = () => send(label);
+      quickArea.appendChild(b);
+    });
+  }
+
+  // ── Welcome message on load ──────────────────────────────────────────────
+  window.addEventListener("DOMContentLoaded", () => {
+    addMessage("bot",
+      "Hi! I'm the Auxilizium mentor matching assistant.\n\n" +
+      "I use RAG + a PyTorch model trained on your past pairings " +
+      "to find the best mentor for each mentee.\n\n" +
+      "Type  find match  to get started."
+    );
+  });
+</script>
+</body>
+</html>
