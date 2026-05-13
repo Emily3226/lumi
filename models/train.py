@@ -2,11 +2,8 @@
 models/train.py
 Trains a mentor matcher model from cleaned historical pairings.
 
-Primary training source:
+Training source:
 - `historical_pairings` table in `data/training.db`
-
-Fallback:
-- `bookings` table, for backwards compatibility with live app bookings.
 """
 
 from __future__ import annotations
@@ -80,38 +77,6 @@ def _load_from_historical_pairings(conn: sqlite3.Connection) -> Tuple[np.ndarray
     return np.array(features, dtype=float), np.array(targets, dtype=float)
 
 
-def _load_from_bookings(conn: sqlite3.Connection) -> Tuple[np.ndarray, np.ndarray] | Tuple[None, None]:
-    if not _table_exists(conn, "bookings"):
-        return None, None
-
-    rows = conn.execute(
-        """
-        SELECT mentor_name, mentee_name, subject,
-               mentor_grade, mentee_grade, match_score
-        FROM bookings
-        WHERE status = 'active' AND match_score IS NOT NULL
-        """
-    ).fetchall()
-
-    if not rows:
-        return None, None
-
-    features = []
-    targets = []
-    for row in rows:
-        mentor_grade = float(row["mentor_grade"] or 0)
-        mentee_grade = float(row["mentee_grade"] or 0)
-        grade_gap = abs(mentor_grade - mentee_grade)
-        subject_match = 1.0
-        senior_bonus = 1.0 if mentor_grade > mentee_grade else 0.0
-        grade_similarity = max(0.0, 1.0 - (grade_gap / 4.0))
-
-        features.append([subject_match, grade_gap, senior_bonus, grade_similarity])
-        targets.append(float(row["match_score"]))
-
-    return np.array(features, dtype=float), np.array(targets, dtype=float)
-
-
 def load_training_data() -> Tuple[np.ndarray, np.ndarray]:
     db_path = get_db_path()
     if not os.path.exists(db_path):
@@ -122,10 +87,10 @@ def load_training_data() -> Tuple[np.ndarray, np.ndarray]:
     conn.row_factory = sqlite3.Row
 
     data = _load_from_historical_pairings(conn)
-    if data[0] is None:
-        data = _load_from_bookings(conn)
 
     conn.close()
+    if data[0] is None:
+        print("⚠ No training rows found in training.db historical_pairings table.")
     return data
 
 
