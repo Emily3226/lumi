@@ -38,7 +38,7 @@ GRADES    = {"9": 9, "10": 10, "11": 11, "12": 12,
 def detect_intent(text: str) -> str:
     t = text.lower().strip()
     if re.search(r"\bbook\b\s*(\d)", t):     return "book"
-    if re.search(r"\bhistory\b|\bpast\b|\bprevious pairings\b", t): return "history"
+    if re.search(r"\blist|all\b.*\bmentor|show.*\bmentor|available mentor", t): return "list_mentors"
     if re.search(r"\bhelp\b|\bwhat can you\b|\bcommands\b", t):     return "help"
     if re.search(r"\brestart\b|\bstart over\b|\bnew\b|\bagain\b", t): return "restart"
     if re.search(r"\bmatch\b|\bfind\b|\bmentor\b|\bpair\b|\blook", t): return "find_match"
@@ -71,16 +71,16 @@ def extract_book_choice(text: str) -> Optional[int]:
 # ── Response builder ─────────────────────────────────────────────────────────
 
 def format_matches(matches: list[dict]) -> str:
-    lines = ["Here are the top matches:\n"]
+    lines = ["Here are the top matches:"]
     for i, m in enumerate(matches[:3], 1):
         pct = round(m["match_score"] * 100)
         bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
         lines.append(
-            f"{i}. {m['name']}  [{bar}] {pct}%\n"
-            f"   Grade {m['grade']} · {m['subject']} · {m['qualifications']}\n"
-            f"   {m['explanation']}\n"
+            f"- {i}. {m['name']} [{bar}] {pct}%\n"
+            f"  Grade {m['grade']} · {m['subject']} · {m['qualifications']}\n"
+            f"  {m['explanation']}"
         )
-    lines.append("Type  book 1 , book 2 , or book 3  to confirm a pairing.")
+    lines.append("Type book 1, book 2, or book 3 to confirm a pairing.")
     return "\n".join(lines)
 
 
@@ -121,13 +121,13 @@ def process_message(session_id: str, text: str) -> str:
         return (
             "Here's what I can do:\n\n"
             "• find match  — find the best mentor for a mentee\n"
-            "• history     — see past pairings\n"
+            "• list all mentors  — see all available mentors\n"
             "• restart     — start over\n\n"
             "Just tell me what you need!"
         )
 
-    if intent == "history":
-        return "__history__"   # signal to the route handler to fetch from DB
+    if intent == "list_mentors":
+        return "__list_mentors__"   # signal to the route handler to fetch mentors from DB
 
     # ── State: idle ───────────────────────────────────────────────────────────
     if state == "idle":
@@ -172,7 +172,10 @@ def process_message(session_id: str, text: str) -> str:
         # Run RAG + model
         mentee     = {"name": name, "grade": sess["grade"], "subject": sess["subject"]}
         candidates = retriever.retrieve(sess["subject"], sess["grade"], top_k=5)
-        ranked     = score_candidates(mentee, candidates)
+        try:
+            ranked = score_candidates(mentee, candidates, strict=True)
+        except RuntimeError:
+            return "The trained mentor model is not available yet. Please retrain it before booking from chat."
         sess["matches"] = ranked
         sess["state"]   = "showing_results"
 
@@ -227,32 +230,46 @@ def chat(req: ChatRequest):
     sess = get_session(req.session_id)
 
     # Handle special signals from process_message
-    if raw == "__history__":
+    if raw == "__list_mentors__":
         conn = get_db()
         rows = conn.execute(
-            "SELECT mentor_name, mentee_name, subject, match_score, created_at "
-            "FROM bookings ORDER BY created_at DESC LIMIT 10"
+            "SELECT name, grade, qualifications, subject, available FROM mentors ORDER BY available DESC, name ASC"
         ).fetchall()
         conn.close()
         if not rows:
-            return ChatResponse(reply="No pairings booked yet.", state=sess["state"])
-        lines = ["Past pairings:\n"]
+            return ChatResponse(reply="No mentors available.", state=sess["state"])
+        lines = ["All Mentors:"]
         for r in rows:
-            pct = round(r["match_score"] * 100)
-            lines.append(f"• {r['mentee_name']} → {r['mentor_name']}  ({r['subject']}, {pct}% match)  {r['created_at'][:10]}")
+            status = "✓ Available" if r["available"] else "✗ Booked"
+            lines.append(f"- {r['name']} – {r['subject']} (Grade {r['grade']}) [{status}]")
         return ChatResponse(reply="\n".join(lines), state=sess["state"])
 
     if raw.startswith("__book__"):
         choice  = int(raw.replace("__book__", ""))
         mentor  = sess["matches"][choice - 1]
         conn    = get_db()
+        # Ensure mentor is still available
+        cur = conn.execute("SELECT available FROM mentors WHERE name = ?", (mentor["name"],))
+        r = cur.fetchone()
+        if not r:
+            conn.close()
+            return ChatResponse(reply="Mentor not found.", state=sess["state"])
+        if r["available"] == 0:
+            conn.close()
+            return ChatResponse(reply="That mentor is already booked.", state=sess["state"])
+
         conn.execute(
-            "INSERT INTO bookings (mentor_name, mentee_name, subject, mentor_grade, mentee_grade, match_score, explanation) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO bookings (mentor_name, mentee_name, subject, mentor_grade, mentee_grade, match_score, explanation, status) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 'active')",
             (mentor["name"], sess["name"], sess["subject"],
              mentor["grade"], sess["grade"],
              mentor["match_score"], mentor["explanation"])
         )
+        # Mark mentor unavailable
+        conn.execute("UPDATE mentors SET available = 0 WHERE name = ?", (mentor["name"],))
+        # Ensure mentee exists
+        conn.execute("INSERT OR IGNORE INTO mentees (name, grade, subject) VALUES (?, ?, ?)",
+                     (sess["name"], sess["grade"], sess["subject"]))
         conn.commit()
         conn.close()
         reset_session(req.session_id)

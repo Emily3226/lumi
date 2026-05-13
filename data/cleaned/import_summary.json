@@ -1,0 +1,219 @@
+{
+  "pairings": 428,
+  "cycles": {
+    "Fall 2023": {
+      "pairings": 46,
+      "avg_grade_gap": 7.43,
+      "avg_match_score": 0.555,
+      "avg_subjects_satisfied": 1.39
+    },
+    "Fall 2024": {
+      "pairings": 67,
+      "avg_grade_gap": 7.97,
+      "avg_match_score": 0.524,
+      "avg_subjects_satisfied": 1.21
+    },
+    "Fall 2025": {
+      "pairings": 78,
+      "avg_grade_gap": 0.0,
+      "avg_match_score": 0.585,
+      "avg_subjects_satisfied": 1.17
+    },
+    "Summer 2024": {
+      "pairings": 96,
+      "avg_grade_gap": 5.75,
+      "avg_match_score": 0.562,
+      "avg_subjects_satisfied": 1.34
+    },
+    "Summer 2025": {
+      "pairings": 43,
+      "avg_grade_gap": 0.0,
+      "avg_match_score": 0.583,
+      "avg_subjects_satisfied": 1.14
+    },
+    "Winter 2024": {
+      "pairings": 41,
+      "avg_grade_gap": 6.83,
+      "avg_match_score": 0.546,
+      "avg_subjects_satisfied": 1.22
+    },
+    "Winter 2025": {
+      "pairings": 31,
+      "avg_grade_gap": 8.52,
+      "avg_match_score": 0.528,
+      "avg_subjects_satisfied": 1.23
+    },
+    "Winter 2026": {
+      "pairings": 26,
+      "avg_grade_gap": 7.58,
+      "avg_match_score": 0.527,
+      "avg_subjects_satisfied": 1.27
+    }
+  },
+  "top_sacrifice_pairs": [
+    {
+      "cycle": "Winter 2026",
+      "mentor": "Krishna Thyagu",
+      "mentee": "Grady Xu",
+      "grade_gap": 13,
+      "match_score": 0.467,
+      "subjects_satisfied": "Science"
+    },
+    {
+      "cycle": "Fall 2024",
+      "mentor": "Manny Roy",
+      "mentee": "Ethan Qin",
+      "grade_gap": 12,
+      "match_score": 0.467,
+      "subjects_satisfied": "Math"
+    },
+    {
+      "cycle": "Fall 2024",
+      "mentor": "Lara Miller",
+      "mentee": "Chloe Ho",
+      "grade_gap": 12,
+      "match_score": 0.467,
+      "subjects_satisfied": "English"
+    },
+    {
+      "cycle": "Winter 2024",
+      "mentor": "Kaining Wu",
+      "mentee": "Jeremy Ding",
+      "grade_gap": 12,
+      "match_score": 0.467,
+      "subjects_satisfied": "Math"
+    },
+    {
+      "cycle": "Winter 2025",
+      "mentor": "Lucas Jin",
+      "mentee": "Kate Au",
+      "grade_gap": 12,
+      "match_score": 0.467,
+      "subjects_satisfied": "Math"
+    },
+    {
+      "cycle": "Winter 2025",
+      "mentor": "Fatima Safdari",
+      "mentee": "Michael Qi And Kevin Qi",
+      "grade_gap": 12,
+      "match_score": 0.467,
+      "subjects_satisfied": "English"
+    },
+    {
+      "cycle": "Fall 2023",
+      "mentor": "Eric Jia",
+      "mentee": "George Sun",
+      "grade_gap": 12,
+      "match_score": 0.583,
+      "subjects_satisfied": "Math, Chemistry"
+    },
+    {
+      "cycle": "Winter 2026",
+      "mentor": "Yichen Wang",
+      "mentee": "Winston Li-Prentice",
+      "grade_gap": 11,
+      "match_score": 0.383,
+      "subjects_satisfied": "Math, Chemistry"
+    },
+    {
+      "cycle": "Fall 2023",
+      "mentor": "Gemina Chen",
+      "mentee": "Zijin Liu",
+      "grade_gap": 11,
+      "match_score": 0.467,
+      "subjects_satisfied": "French"
+    },
+    {
+      "cycle": "Fall 2023",
+      "mentor": "Hannah Shi",
+      "mentee": "Anton Yan",
+      "grade_gap": 11,
+      "match_score": 0.467,
+      "subjects_satisfied": "French"
+    }
+  ],
+  "top_mentor_load": [
+    [
+      "Umaiza Ahmmed",
+      9
+    ],
+    [
+      "Hannah Mardare",
+      9
+    ],
+    [
+      "Lawrence Zhou",
+      7
+    ],
+    [
+      "Hanyu Zhang",
+      7
+    ],
+    [
+      "Elena Hao",
+      6
+    ],
+    [
+      "William Ding",
+      6
+    ],
+    [
+      "Donald Wei",
+      6
+    ],
+    [
+      "Bryan Zhang",
+      6
+    ],
+    [
+      "Ellison Lu",
+      6
+    ],
+    [
+      "Cecilia Kim",
+      6
+    ]
+  ],
+  "top_mentee_load": [
+    [
+      "Olivia Hao",
+      7
+    ],
+    [
+      "Chloe Ho",
+      7
+    ],
+    [
+      "Sophie Liu",
+      7
+    ],
+    [
+      "Blake Bai",
+      6
+    ],
+    [
+      "Danica Lau",
+      5
+    ],
+    [
+      "Sunny Zhang",
+      5
+    ],
+    [
+      "Amelia Ma",
+      5
+    ],
+    [
+      "Raymond Jiang",
+      5
+    ],
+    [
+      "Oscar Liu",
+      5
+    ],
+    [
+      "Jiayue Qiu",
+      4
+    ]
+  ]
+}

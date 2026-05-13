@@ -24,9 +24,11 @@ from datetime import datetime
 from rag.retriever import MentorRetriever
 from models.inference import score_candidates
 from api.chat import router as chat_router
+from api.admin import router as admin_router
 
 app = FastAPI(title="Lumi Mentor Matcher")
 app.include_router(chat_router)
+app.include_router(admin_router, prefix="/admin")
 
 app.add_middleware(
     CORSMiddleware,
@@ -60,6 +62,53 @@ def init_db():
             created_at   TEXT DEFAULT (datetime('now'))
         )
     """)
+
+    # Mentors table stores canonical mentor profiles and availability
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS mentors (
+            name           TEXT PRIMARY KEY,
+            grade          INTEGER,
+            qualifications TEXT,
+            subject        TEXT,
+            available      INTEGER DEFAULT 1
+        )
+    """)
+
+    # Mentees table for optionally storing incoming mentee records
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS mentees (
+            name    TEXT PRIMARY KEY,
+            grade   INTEGER,
+            subject TEXT
+        )
+    """)
+
+    # Populate mentors from CSV if mentors table is empty
+    cur = conn.execute("SELECT COUNT(1) as c FROM mentors")
+    if cur.fetchone()[0] == 0:
+        import csv
+        csv_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "pairings.csv")
+        try:
+            with open(csv_path, newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                seen = set()
+                for r in reader:
+                    name = r.get('mentor_name')
+                    if not name or name in seen:
+                        continue
+                    seen.add(name)
+                    conn.execute(
+                        "INSERT OR IGNORE INTO mentors (name, grade, qualifications, subject, available) VALUES (?, ?, ?, ?, 1)",
+                        (name, int(r.get('mentor_grade') or 0), r.get('mentor_qualifications') or '', r.get('mentor_subject') or '')
+                    )
+        except FileNotFoundError:
+            # no seed data available; leave mentors empty
+            pass
+    # Ensure bookings table has a status column for lifecycle management
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(bookings)").fetchall()]
+    if 'status' not in cols:
+        conn.execute("ALTER TABLE bookings ADD COLUMN status TEXT DEFAULT 'active'")
+
     conn.commit()
     conn.close()
 
@@ -103,7 +152,10 @@ def match_mentee(req: MenteeRequest):
         raise HTTPException(status_code=404, detail="No mentor candidates found")
 
     # Step 2 — Model scoring
-    ranked = score_candidates(mentee, candidates)
+    try:
+        ranked = score_candidates(mentee, candidates, strict=True)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
 
     return {
         "mentee":  mentee,
@@ -115,15 +167,34 @@ def match_mentee(req: MenteeRequest):
 def book_pairing(req: BookingRequest):
     """Save a confirmed mentor-mentee pairing to SQLite."""
     conn = get_db()
+    # Ensure mentor exists and is available
+    cur = conn.execute("SELECT available FROM mentors WHERE name = ?", (req.mentor_name,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Mentor not found")
+    if row[0] == 0:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Mentor already booked")
+
+    # Insert booking
     conn.execute("""
         INSERT INTO bookings
-          (mentor_name, mentee_name, subject, mentor_grade, mentee_grade, match_score, explanation)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+          (mentor_name, mentee_name, subject, mentor_grade, mentee_grade, match_score, explanation, status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
     """, (
         req.mentor_name, req.mentee_name, req.subject,
         req.mentor_grade, req.mentee_grade,
         req.match_score, req.explanation,
     ))
+
+    # Mark mentor unavailable
+    conn.execute("UPDATE mentors SET available = 0 WHERE name = ?", (req.mentor_name,))
+
+    # Ensure mentee recorded
+    conn.execute("INSERT OR IGNORE INTO mentees (name, grade, subject) VALUES (?, ?, ?)",
+                 (req.mentee_name, req.mentee_grade, req.subject))
+
     conn.commit()
     conn.close()
     return {"status": "booked", "mentor": req.mentor_name, "mentee": req.mentee_name}

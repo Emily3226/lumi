@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Simple Lumi Admin</title>
+    <style>body{font-family:system-ui,Segoe UI,Helvetica,Arial;margin:24px}label{display:block;margin-top:8px}input,select{width:100%;padding:8px;margin-top:4px}button{margin-top:8px}table{width:100%;border-collapse:collapse;margin-top:12px}td,th{border:1px solid #ddd;padding:6px;text-align:left}</style>
+  </head>
+  <body>
+    <h3>Mentors (admin)</h3>
+    <div>
+      <form id="add-form">
+        <label>Name<input id="name" required /></label>
+        <label>Grade<input id="grade" type="number" value="12" /></label>
+        <label>Subject<input id="subject" value="Math" /></label>
+        <label>Qualifications<input id="qual" /></label>
+        <button type="submit">Add / Update Mentor</button>
+      </form>
+    </div>
+
+    <div>
+      <button id="refresh">Refresh List</button>
+      <table id="mentors"><thead><tr><th>Name</th><th>Grade</th><th>Subject</th><th>Qualifications</th><th>Available</th><th>Action</th></tr></thead><tbody></tbody></table>
+    </div>
+
+    <h3 style="margin-top:18px">Bookings</h3>
+    <div>
+      <button id="refresh-bookings">Refresh Bookings</button>
+      <table id="bookings"><thead><tr><th>ID</th><th>Mentor</th><th>Mentee</th><th>Subject</th><th>Score</th><th>When</th><th>Status</th><th>Action</th></tr></thead><tbody></tbody></table>
+    </div>
+    </div>
+
+    <script>
+      const API = 'http://localhost:8000/admin';
+      const tableBody = document.querySelector('#mentors tbody');
+      async function load(){
+        const r = await fetch(API + '/mentors');
+        const data = await r.json();
+        tableBody.innerHTML = '';
+        data.forEach(m => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${m.name}</td><td>${m.grade}</td><td>${m.subject}</td><td>${m.qualifications}</td><td>${m.available? 'Yes':'No'}</td><td></td>`;
+          const td = tr.querySelector('td:last-child');
+          const btn = document.createElement('button');
+          btn.textContent = m.available? 'Mark Unavailable':'Mark Available';
+          btn.onclick = async ()=>{
+            await fetch(API + '/mentors/' + encodeURIComponent(m.name) + '/availability?available=' + (m.available?0:1), {method:'POST'});
+            load();
+          };
+          td.appendChild(btn);
+          tableBody.appendChild(tr);
+        });
+        loadBookings();
+      }
+      async function loadBookings(){
+        const bbody = document.querySelector('#bookings tbody');
+        const r = await fetch(API + '/bookings');
+        const data = await r.json();
+        bbody.innerHTML = '';
+        data.forEach(b => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${b.id}</td><td>${b.mentor_name}</td><td>${b.mentee_name}</td><td>${b.subject}</td><td>${Math.round((b.match_score||0)*100)}%</td><td>${b.created_at}</td><td>${b.status||'active'}</td><td></td>`;
+          const td = tr.querySelector('td:last-child');
+          if((b.status||'active') === 'active'){
+            const cancel = document.createElement('button');
+            cancel.textContent = 'Cancel';
+            cancel.onclick = async ()=>{ await fetch(API + '/bookings/' + b.id + '/cancel', {method:'POST'}); load(); };
+            td.appendChild(cancel);
+          } else {
+            const rel = document.createElement('button');
+            rel.textContent = 'Release Mentor';
+            rel.onclick = async ()=>{ await fetch(API + '/bookings/' + b.id + '/release-mentor', {method:'POST'}); load(); };
+            td.appendChild(rel);
+          }
+          bbody.appendChild(tr);
+        });
+      }
+      document.getElementById('refresh-bookings').onclick = loadBookings;
+      document.getElementById('refresh').onclick = load;
+      document.getElementById('add-form').onsubmit = async (e)=>{
+        e.preventDefault();
+        const body = {name:document.getElementById('name').value, grade:parseInt(document.getElementById('grade').value)||12, subject:document.getElementById('subject').value, qualifications:document.getElementById('qual').value};
+        await fetch(API + '/mentors', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+        load();
+      };
+      load();
+    </script>
+  </body>
+</html>

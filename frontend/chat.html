@@ -1,450 +1,113 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Lumi</title>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet"/>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Lumi Chat</title>
+    <style>
+      :root{
+        --bg:#f5f7fb; --card:#ffffff; --accent:#6c5ce7; --user:#00b894; --bot:#0984e3; --muted:#6b7280;
+      }
+      html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Helvetica,Arial;background:var(--bg);color:#111}
+      .container{max-width:820px;margin:36px auto;padding:20px;border-radius:12px;background:#ffffff;box-shadow:0 6px 24px rgba(21,32,43,0.08)}
+      header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+      .logo{width:44px;height:44px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:white;font-weight:700}
+      h1{font-size:18px;margin:0}
+      #messages{background:var(--card);border-radius:8px;padding:14px;height:420px;overflow:auto;border:1px solid rgba(15,23,42,0.04)}
+      .msg{display:flex;gap:10px;align-items:flex-end;margin:8px 0}
+      .msg .bubble{max-width:72%;padding:10px 14px;border-radius:14px;line-height:1.35}
+      .msg.user{justify-content:flex-end}
+      .msg.user .bubble{background:var(--user);color:#04311a;border-bottom-right-radius:4px}
+      .msg.bot{justify-content:flex-start}
+      .msg.bot .bubble{background:var(--bot);color:#082544;border-bottom-left-radius:4px}
+      .avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:600}
+      .avatar.user{background:var(--user)}
+      .avatar.bot{background:var(--bot)}
+      .meta{font-size:12px;color:var(--muted);margin-top:6px}
+      .quick-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+      .quick-action{background:#eef2ff;color:#2f3a8f;box-shadow:none;border:1px solid #dbe3ff}
+      .quick-action:hover{background:#e3e9ff}
+      .composer{display:flex;gap:10px;margin-top:12px}
+      textarea{flex:1;min-height:64px;border-radius:10px;padding:10px;border:1px solid rgba(15,23,42,0.06);resize:none;font-size:14px}
+      button{background:var(--accent);color:white;border:none;padding:10px 14px;border-radius:10px;cursor:pointer;box-shadow:0 6px 18px rgba(108,92,231,0.18)}
+      button:active{transform:translateY(1px)}
+      @media(max-width:640px){.container{margin:18px;padding:14px}.logo{width:36px;height:36px}}
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <header>
+        <div class="logo">LM</div>
+        <div>
+          <h1>Lumi</h1>
+          <div class="meta">Find mentors and book sessions for academic help.</div>
+        </div>
+      </header>
 
-    :root {
-      --bg:        #eff6ff;
-      --bg-2:      #dbeafe;
-      --surface:   rgba(255,255,255,0.86);
-      --surface2:  #f8fbff;
-      --border:    #c9ddff;
-      --border2:   #b6cdf6;
-      --accent:    #1d4ed8;
-      --accent-l:  #60a5fa;
-      --green:     #0284c7;
-      --green-d:   #075985;
-      --amber:     #f59e0b;
-      --red:       #ef4444;
-      --text:      #10213a;
-      --subtext:   #526784;
-      --muted:     #6b7f9d;
-      --font:      'JetBrains Mono', monospace;
-      --shadow:    0 24px 70px rgba(29,78,216,0.12);
-    }
+      <div class="quick-actions">
+        <button type="button" class="quick-action" data-message="help">What can you do?</button>
+        <button type="button" class="quick-action" data-message="show all mentors">Show all mentors</button>
+        <button type="button" class="quick-action" data-message="find match">Find a match</button>
+        <button type="button" class="quick-action" data-message="restart">Restart</button>
+      </div>
 
-    html, body { height: 100%; }
+      <div id="messages" aria-live="polite"></div>
 
-    body {
-      font-family: var(--font);
-      background:
-        radial-gradient(circle at top left, rgba(96,165,250,0.22), transparent 32%),
-        radial-gradient(circle at top right, rgba(29,78,216,0.16), transparent 28%),
-        linear-gradient(180deg, var(--bg), var(--bg-2));
-      color: var(--text);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
-      padding: 1rem;
-    }
-
-    /* ── Shell wrapper ── */
-    .shell {
-      width: 100%;
-      max-width: 760px;
-      height: 90vh;
-      max-height: 820px;
-      display: flex;
-      flex-direction: column;
-      background: var(--surface);
-      border: 1px solid rgba(29,78,216,0.12);
-      border-radius: 24px;
-      overflow: hidden;
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(16px);
-    }
-
-    /* ── Title bar ── */
-    .titlebar {
-      padding: 0.85rem 1.25rem;
-      background: var(--surface2);
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      flex-shrink: 0;
-    }
-    .dots { display: flex; gap: 6px; }
-    .dot {
-      width: 11px; height: 11px;
-      border-radius: 50%;
-    }
-    .dot.r { background: #ff5f57; }
-    .dot.y { background: #febc2e; }
-    .dot.g { background: #28c840; }
-
-    .titlebar-center {
-      flex: 1;
-      text-align: center;
-    }
-    .titlebar-center span {
-      font-family: 'Syne', sans-serif;
-      font-weight: 800;
-      font-size: 0.8rem;
-      letter-spacing: 0.2em;
-      background: linear-gradient(90deg, var(--accent), var(--accent-l));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .titlebar-right {
-      font-size: 0.6rem;
-      color: var(--muted);
-      letter-spacing: 0.1em;
-    }
-
-    /* ── Messages ── */
-    .messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 1.5rem 1.25rem;
-      display: flex;
-      flex-direction: column;
-      gap: 0.9rem;
-      scroll-behavior: smooth;
-    }
-    .messages::-webkit-scrollbar { width: 3px; }
-    .messages::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
-
-    /* ── Message rows ── */
-    .msg-row {
-      display: flex;
-      gap: 0.75rem;
-      align-items: flex-start;
-      animation: fadeUp 0.25s ease forwards;
-    }
-    .msg-row.user { flex-direction: row-reverse; }
-
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(8px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-
-    /* ── Avatars ── */
-    .avatar {
-      width: 28px; height: 28px;
-      border-radius: 7px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 0.6rem; font-weight: 700;
-      flex-shrink: 0;
-      margin-top: 2px;
-      letter-spacing: 0.05em;
-    }
-    .msg-row.bot  .avatar { background: linear-gradient(135deg, var(--accent), var(--accent-l)); color: #fff; }
-    .msg-row.user .avatar { background: #fff; border: 1px solid var(--border2); color: var(--accent); }
-
-    /* ── Bubbles ── */
-    .bubble {
-      max-width: 78%;
-      padding: 0.75rem 1rem;
-      border-radius: 16px;
-      font-size: 0.82rem;
-      line-height: 1.65;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .msg-row.bot .bubble {
-      background: linear-gradient(180deg, #ffffff, #f6fbff);
-      border: 1px solid var(--border);
-      border-top-left-radius: 3px;
-      color: var(--text);
-      box-shadow: 0 10px 24px rgba(29,78,216,0.06);
-    }
-    .msg-row.user .bubble {
-      background: linear-gradient(135deg, var(--accent), var(--accent-l));
-      border-top-right-radius: 3px;
-      color: #fff;
-    }
-
-    /* Match score bars inside bot bubbles */
-    .bubble .score-line {
-      font-family: var(--font);
-      color: #0284c7;
-      font-size: 0.75rem;
-    }
-
-    /* ── Typing indicator ── */
-    .typing .bubble {
-      background: #fff;
-      border: 1px solid var(--border);
-      padding: 0.85rem 1.1rem;
-      border-top-left-radius: 3px;
-    }
-    .dots-anim { display: flex; gap: 5px; align-items: center; }
-    .dots-anim span {
-      width: 6px; height: 6px;
-      background: var(--muted);
-      border-radius: 50%;
-      animation: blink 1.2s infinite;
-    }
-    .dots-anim span:nth-child(2) { animation-delay: 0.2s; }
-    .dots-anim span:nth-child(3) { animation-delay: 0.4s; }
-    @keyframes blink {
-      0%,60%,100% { opacity: 0.3; transform: scale(1); }
-      30% { opacity: 1; transform: scale(1.3); }
-    }
-
-    /* ── Quick replies ── */
-    .quick-area {
-      padding: 0.5rem 1.25rem 0;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.4rem;
-    }
-    .qr {
-      padding: 0.35rem 0.8rem;
-      border: 1px solid var(--border2);
-      border-radius: 20px;
-      background: rgba(255,255,255,0.72);
-      color: var(--subtext);
-      font-family: var(--font);
-      font-size: 0.72rem;
-      cursor: pointer;
-      transition: all 0.15s;
-    }
-    .qr:hover { border-color: var(--accent); color: var(--accent); background: #fff; }
-
-    /* ── Input bar ── */
-    .input-bar {
-      padding: 1rem 1.25rem;
-      border-top: 1px solid var(--border);
-      display: flex;
-      gap: 0.6rem;
-      align-items: flex-end;
-      background: var(--surface2);
-      flex-shrink: 0;
-    }
-    .input-wrap {
-      flex: 1;
-      position: relative;
-    }
-    .prompt-symbol {
-      position: absolute;
-      left: 0.85rem;
-      bottom: 0.72rem;
-      color: var(--accent);
-      font-size: 0.8rem;
-      pointer-events: none;
-    }
-    textarea {
-      width: 100%;
-      background: #fff;
-      border: 1px solid var(--border2);
-      border-radius: 14px;
-      padding: 0.7rem 1rem 0.7rem 1.8rem;
-      color: var(--text);
-      font-family: var(--font);
-      font-size: 0.82rem;
-      resize: none;
-      outline: none;
-      line-height: 1.5;
-      max-height: 100px;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-    textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(37,99,235,0.12); }
-    textarea::placeholder { color: var(--muted); }
-
-    .send-btn {
-      width: 40px; height: 40px;
-      border-radius: 12px;
-      border: none;
-      background: linear-gradient(135deg, var(--accent), var(--accent-l));
-      color: #fff;
-      display: flex; align-items: center; justify-content: center;
-      cursor: pointer;
-      flex-shrink: 0;
-      transition: all 0.15s;
-    }
-    .send-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 10px 22px rgba(29,78,216,0.18); }
-    .send-btn:active { transform: scale(0.95); }
-    .send-btn:disabled { background: var(--border2); cursor: not-allowed; box-shadow: none; }
-    .send-btn svg { width: 16px; height: 16px; }
-  </style>
-</head>
-<body>
-
-<div class="shell">
-
-  <!-- Title bar -->
-  <div class="titlebar">
-    <div class="dots">
-      <div class="dot r"></div>
-      <div class="dot y"></div>
-      <div class="dot g"></div>
+      <div class="composer">
+        <textarea id="input" placeholder="Ask me anything about finding a mentor or booking a session..."></textarea>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button id="send">Send</button>
+        </div>
+      </div>
     </div>
-    <div class="titlebar-center"><span>LUMI MENTOR MATCHER</span></div>
-    <div class="titlebar-right">v1.0</div>
-  </div>
 
-  <!-- Messages -->
-  <div class="messages" id="messages"></div>
-
-  <!-- Quick replies -->
-  <div class="quick-area" id="quick-area">
-    <button class="qr" onclick="send('find match')">find match</button>
-    <button class="qr" onclick="send('history')">past pairings</button>
-    <button class="qr" onclick="send('help')">help</button>
-  </div>
-
-  <!-- Input -->
-  <div class="input-bar">
-    <div class="input-wrap">
-      <span class="prompt-symbol">›</span>
-      <textarea id="input" rows="1" placeholder="type a message…"></textarea>
-    </div>
-    <button class="send-btn" id="send-btn" onclick="send()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
-           stroke-linecap="round" stroke-linejoin="round">
-        <line x1="22" y1="2" x2="11" y2="13"/>
-        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-      </svg>
-    </button>
-  </div>
-
-</div>
-
-<script>
-  const API        = "http://localhost:8000";
-  const SESSION_ID = "session_" + Math.random().toString(36).slice(2, 9);
-
-  const messagesEl  = document.getElementById("messages");
-  const inputEl     = document.getElementById("input");
-  const sendBtn     = document.getElementById("send-btn");
-  const quickArea   = document.getElementById("quick-area");
-
-  // Auto-resize textarea
-  inputEl.addEventListener("input", () => {
-    inputEl.style.height = "auto";
-    inputEl.style.height = Math.min(inputEl.scrollHeight, 100) + "px";
-  });
-  inputEl.addEventListener("keydown", e => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-  });
-
-  function scrollBottom() {
-    messagesEl.scrollTop = messagesEl.scrollHeight;
-  }
-
-  function addMessage(role, text) {
-    // Hide quick replies after first user message
-    if (role === "user") quickArea.innerHTML = "";
-
-    const row    = document.createElement("div");
-    row.className = `msg-row ${role}`;
-
-    const avatar = document.createElement("div");
-    avatar.className = "avatar";
-    avatar.textContent = role === "bot" ? "AUX" : "YOU";
-
-    const bubble = document.createElement("div");
-    bubble.className = "bubble";
-
-    // Colour score bars green
-    bubble.innerHTML = text
-      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-      .replace(/(█+░*)/g, '<span class="score-line">$1</span>');
-
-    row.appendChild(avatar);
-    row.appendChild(bubble);
-    messagesEl.appendChild(row);
-    scrollBottom();
-    return row;
-  }
-
-  function showTyping() {
-    const row    = document.createElement("div");
-    row.className = "msg-row bot typing";
-    row.id        = "typing";
-
-    const avatar = document.createElement("div");
-    avatar.className = "avatar";
-    avatar.textContent = "AUX";
-
-    const bubble = document.createElement("div");
-    bubble.className = "bubble";
-    bubble.innerHTML  = '<div class="dots-anim"><span></span><span></span><span></span></div>';
-
-    row.appendChild(avatar);
-    row.appendChild(bubble);
-    messagesEl.appendChild(row);
-    scrollBottom();
-  }
-  function hideTyping() {
-    const el = document.getElementById("typing");
-    if (el) el.remove();
-  }
-
-  async function send(override) {
-    const text = (override || inputEl.value).trim();
-    if (!text) return;
-
-    inputEl.value = "";
-    inputEl.style.height = "auto";
-    sendBtn.disabled = true;
-
-    addMessage("user", text);
-    showTyping();
-
-    try {
-      const res  = await fetch(`${API}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: SESSION_ID, message: text }),
+    <script>
+      const API = 'http://localhost:8000';
+      const SESSION = 'session_' + Math.random().toString(36).slice(2,9);
+      const messagesEl = document.getElementById('messages');
+      const inputEl = document.getElementById('input');
+      document.getElementById('send').onclick = send;
+      document.querySelectorAll('.quick-action').forEach((button) => {
+        button.addEventListener('click', () => sendQuickMessage(button.dataset.message));
       });
-      const data = await res.json();
-      hideTyping();
-      addMessage("bot", data.reply);
+      inputEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } });
 
-      // Show contextual quick replies based on state
-      updateQuickReplies(data.state, data.matches);
+      function el(tag,cls,txt){const d=document.createElement(tag); if(cls) d.className=cls; if(txt) d.textContent=txt; return d}
 
-    } catch {
-      hideTyping();
-      addMessage("bot", "Could not reach the server.\nMake sure the backend is running:\n\n  uvicorn api.main:app --reload");
-    }
+      function add(role, text){
+        const wrap = el('div','msg '+role);
+        const avatar = el('div','avatar '+role, role==='user'?'Y': 'B');
+        const bubble = el('div','bubble', text);
+        wrap.appendChild(role==='user'? bubble : avatar);
+        wrap.appendChild(role==='user'? avatar : bubble);
+        messagesEl.appendChild(wrap);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
 
-    sendBtn.disabled = false;
-    inputEl.focus();
-  }
+      async function send(){
+        const text = inputEl.value.trim(); if(!text) return;
+        inputEl.value = '';
+        await sendMessage(text);
+      }
 
-  function updateQuickReplies(state, matches) {
-    quickArea.innerHTML = "";
-    const btns = [];
+      async function sendQuickMessage(text){
+        await sendMessage(text);
+      }
 
-    if (state === "showing_results" && matches && matches.length) {
-      matches.slice(0, 3).forEach((_, i) =>
-        btns.push(`book ${i + 1}`)
-      );
-      btns.push("restart");
-    } else if (state === "idle") {
-      btns.push("find match", "history", "help");
-    }
-
-    btns.forEach(label => {
-      const b = document.createElement("button");
-      b.className   = "qr";
-      b.textContent = label;
-      b.onclick     = () => send(label);
-      quickArea.appendChild(b);
-    });
-  }
-
-  // ── Welcome message on load ──────────────────────────────────────────────
-  window.addEventListener("DOMContentLoaded", () => {
-    addMessage("bot",
-      "Hi! I'm Lumi, the mentor matching assistant.\n\n" +
-      "I use RAG + a PyTorch model trained on your past pairings " +
-      "to find the best mentor for each mentee.\n\n" +
-      "Type  find match  to get started."
-    );
-  });
-</script>
-</body>
+      async function sendMessage(text){
+        add('user', text);
+        try{
+          const res = await fetch(API + '/chat', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({session_id: SESSION, message: text})
+          });
+          if(!res.ok) throw new Error('Bad response');
+          const data = await res.json();
+          add('bot', data.reply || 'Sorry, no reply.');
+        }catch(e){
+          add('bot', 'Could not reach backend. Is it running at http://localhost:8000 ?');
+        }
+      }
+    </script>
+  </body>
 </html>

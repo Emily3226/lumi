@@ -1,92 +1,109 @@
 """
 models/inference.py
-Loads the trained MentorMatcher and scores mentor candidates for a given mentee.
-This is the bridge between RAG (retrieval) and your model (ranking).
+Scores mentor candidates for a given mentee using a trained ML model,
+with fallback to a heuristic if the model is not available.
 """
 
-import torch
-import numpy as np
-import json
-import sys
+from __future__ import annotations
 import os
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from train import MentorMatcher
-
-
-def load_model(model_path: str = "models/matcher.pt"):
-    checkpoint = torch.load(model_path, map_location="cpu")
-    model      = MentorMatcher(checkpoint["input_dim"])
-    model.load_state_dict(checkpoint["model_state"])
-    model.eval()
-    return model
+import joblib
+import numpy as np
 
 
-def load_vocab(vocab_path: str = "models/vocab.json") -> dict:
-    with open(vocab_path) as f:
-        return json.load(f)
+# Try to load the trained model
+_MODEL_CACHE = None
+_MODEL_AVAILABLE = False
+
+def _load_trained_model():
+    """Load the trained mentor matcher model if it exists."""
+    global _MODEL_CACHE, _MODEL_AVAILABLE
+    if _MODEL_CACHE is not None:
+        return _MODEL_CACHE
+    
+    model_path = os.path.join(os.path.dirname(__file__), "mentor_matcher.pkl")
+    if os.path.exists(model_path):
+        try:
+            _MODEL_CACHE = joblib.load(model_path)
+            _MODEL_AVAILABLE = True
+            print("✓ Loaded trained mentor matcher model")
+            return _MODEL_CACHE
+        except Exception as e:
+            print(f"⚠ Failed to load trained model: {e}. Falling back to heuristic.")
+            _MODEL_AVAILABLE = False
+            return None
+    return None
 
 
-def encode_subject(subject: str, subjects: list) -> list[float]:
-    vec = [0.0] * len(subjects)
-    if subject in subjects:
-        vec[subjects.index(subject)] = 1.0
-    return vec
+def _normalize_score(score: float) -> float:
+    return max(0.0, min(1.0, score))
 
 
-def encode_qual(qual: str, quals: list) -> list[float]:
-    vec = [0.0] * len(quals)
-    if qual in quals:
-        vec[quals.index(qual)] = 1.0
-    return vec
-
-
-def encode_grade(grade: int) -> float:
-    return (int(grade) - 9) / 3.0
-
-
-def build_feature_vector(mentor: dict, mentee: dict, vocab: dict) -> list[float]:
-    subjects = vocab["subjects"]
-    quals    = vocab["qualifications"]
-
-    mentor_subj_vec = encode_subject(mentor["subject"], subjects)
-    mentor_grade    = encode_grade(mentor["grade"])
-    mentor_qual_vec = encode_qual(mentor["qualifications"], quals)
-
-    mentee_subj_vec = encode_subject(mentee["subject"], subjects)
-    mentee_grade    = encode_grade(mentee["grade"])
-
-    subject_match = 1.0 if mentor["subject"] == mentee["subject"] else 0.0
-    grade_diff    = abs(int(mentor["grade"]) - int(mentee["grade"])) / 3.0
-    mentor_senior = 1.0 if int(mentor["grade"]) > int(mentee["grade"]) else 0.0
-
-    return (
-        mentor_subj_vec +
-        [mentor_grade] +
-        mentor_qual_vec +
-        mentee_subj_vec +
-        [mentee_grade] +
-        [subject_match, grade_diff, mentor_senior]
-    )
-
-
-def score_candidates(mentee: dict, candidates: list[dict]) -> list[dict]:
+def _ml_score(mentee: dict, mentor: dict, trained_model: dict) -> float:
     """
-    Score each RAG-retrieved mentor candidate using the trained model.
-    Returns candidates sorted by model score descending.
+    Score using the trained ML model.
+    """
+    try:
+        scaler = trained_model["scaler"]
+        model = trained_model["model"]
+        
+        mentor_grade = float(mentor.get("grade", 0))
+        mentee_grade = float(mentee.get("grade", 0))
+        
+        # Extract same features used in training
+        subject_match = 1.0 if mentor.get("subject") == mentee.get("subject") else 0.5
+        grade_gap = abs(mentor_grade - mentee_grade)
+        senior = 1.0 if mentor_grade > mentee_grade else 0.0
+        grade_similarity = max(0.0, 1.0 - (grade_gap / 4.0))
+        
+        features = np.array([[subject_match, grade_gap, senior, grade_similarity]])
+        features_scaled = scaler.transform(features)
+        score = float(model.predict(features_scaled)[0])
+        
+        return _normalize_score(score)
+    except Exception as e:
+        print(f"⚠ ML scoring failed: {e}. Using heuristic.")
+        return _heuristic_score(mentee, mentor)
+
+
+
+def _heuristic_score(mentee: dict, mentor: dict) -> float:
+    subject_match = 1.0 if mentor.get("subject") == mentee.get("subject") else 0.0
+    grade_gap = abs(int(mentor.get("grade", 0)) - int(mentee.get("grade", 0)))
+    senior_bonus = 1.0 if int(mentor.get("grade", 0)) > int(mentee.get("grade", 0)) else 0.0
+    qualification_bonus = 1.0 if mentor.get("qualifications") else 0.0
+    similarity_bonus = float(mentor.get("similarity_score", 0.0))
+
+    score = (
+        0.45 * subject_match
+        + 0.20 * max(0.0, 1.0 - (grade_gap / 3.0))
+        + 0.20 * senior_bonus
+        + 0.10 * qualification_bonus
+        + 0.05 * similarity_bonus
+    )
+    return _normalize_score(score)
+
+
+def score_candidates(mentee: dict, candidates: list[dict], strict: bool = False) -> list[dict]:
+    """
+    Score each RAG-retrieved mentor candidate using the trained ML model.
+    If `strict` is True, raise when the trained model is not available instead
+    of falling back to the heuristic scorer.
+    Returns candidates sorted by score descending.
 
     mentee:     { name, grade, subject }
     candidates: list of mentor dicts from the RAG retriever
     """
-    model = load_model()
-    vocab = load_vocab()
-
+    trained_model = _load_trained_model()
+    if strict and not (trained_model and _MODEL_AVAILABLE):
+        raise RuntimeError("Trained mentor matcher model is not available")
+    
     scored = []
     for mentor in candidates:
-        features = build_feature_vector(mentor, mentee, vocab)
-        x        = torch.tensor([features], dtype=torch.float32)
-        with torch.no_grad():
-            score = model(x).item()
+        # Use trained model if available, otherwise use heuristic
+        if trained_model and _MODEL_AVAILABLE:
+            score = _ml_score(mentee, mentor, trained_model)
+        else:
+            score = _heuristic_score(mentee, mentor)
 
         # Generate a simple rule-based explanation
         reasons = []
