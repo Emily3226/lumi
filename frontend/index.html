@@ -8,106 +8,127 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --bg:       #09090f;
-      --surface:  #111118;
-      --border:   #1e1e2e;
-      --accent:   #7c3aed;
-      --green:    #34d399;
-      --muted:    #4b5563;
-      --text:     #e2e8f0;
-      --subtext:  #94a3b8;
+      --bg:       #f3f8ff;
+      --bg-2:     #e8f1ff;
+      --surface:  rgba(255,255,255,0.88);
+      --surface-2:#f7fbff;
+      --border:   #cfe0ff;
+      --accent:   #2563eb;
+      --accent-2: #60a5fa;
+      --green:    #0ea5e9;
+      --muted:    #5b6b86;
+      --text:     #10213a;
+      --subtext:  #49617f;
+      --shadow:   0 18px 60px rgba(37,99,235,0.12);
     }
     body {
       font-family: 'IBM Plex Mono', monospace;
-      background: var(--bg);
+      background:
+        radial-gradient(circle at top left, rgba(96,165,250,0.22), transparent 32%),
+        radial-gradient(circle at top right, rgba(37,99,235,0.14), transparent 28%),
+        linear-gradient(180deg, var(--bg), var(--bg-2));
       color: var(--text);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 2rem 1rem;
+      padding: 2.5rem 1rem;
     }
     header {
       text-align: center;
-      margin-bottom: 2.5rem;
+      margin-bottom: 1.5rem;
     }
     header h1 {
       font-family: 'Syne', sans-serif;
-      font-size: 2rem;
+      font-size: clamp(2.1rem, 4vw, 3rem);
       font-weight: 800;
-      background: linear-gradient(135deg, #7c3aed, #34d399);
+      background: linear-gradient(135deg, #1d4ed8, #38bdf8);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
       background-clip: text;
     }
-    header p { color: var(--muted); font-size: 0.75rem; margin-top: 0.4rem; letter-spacing: 0.1em; }
+    header p {
+      color: var(--subtext);
+      font-size: 0.78rem;
+      margin-top: 0.45rem;
+      letter-spacing: 0.16em;
+    }
 
     .card {
       background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 1.75rem;
+      border: 1px solid rgba(37,99,235,0.12);
+      border-radius: 22px;
+      padding: 1.5rem;
       width: 100%;
-      max-width: 640px;
-      margin-bottom: 1.25rem;
+      max-width: 720px;
+      margin-bottom: 1rem;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px);
     }
     .card h2 {
       font-family: 'Syne', sans-serif;
       font-size: 0.85rem;
       letter-spacing: 0.12em;
-      color: var(--muted);
-      margin-bottom: 1.25rem;
+      color: var(--accent);
+      margin-bottom: 1rem;
     }
 
-    .form-row { display: flex; flex-direction: column; gap: 0.9rem; }
-    label { font-size: 0.7rem; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 0.3rem; display: block; }
+    .form-row { display: flex; flex-direction: column; gap: 0.85rem; }
+    .field-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.85rem; }
+    @media (max-width: 700px) { .field-grid { grid-template-columns: 1fr; } }
+    label { font-size: 0.68rem; letter-spacing: 0.12em; color: var(--subtext); margin-bottom: 0.35rem; display: block; }
     input, select {
       width: 100%;
-      background: var(--bg);
+      background: var(--surface-2);
       border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 0.7rem 1rem;
+      border-radius: 12px;
+      padding: 0.82rem 0.95rem;
       color: var(--text);
       font-family: 'IBM Plex Mono', monospace;
       font-size: 0.85rem;
       outline: none;
-      transition: border-color 0.2s;
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
     }
-    input:focus, select:focus { border-color: var(--accent); }
-    select option { background: var(--surface); }
+    input:focus, select:focus {
+      border-color: var(--accent-2);
+      box-shadow: 0 0 0 4px rgba(37,99,235,0.12);
+      transform: translateY(-1px);
+    }
+    select option { background: #fff; }
 
     button.primary {
       width: 100%;
       margin-top: 1rem;
-      padding: 0.85rem;
-      background: var(--accent);
+      padding: 0.95rem 1rem;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
       border: none;
-      border-radius: 10px;
+      border-radius: 14px;
       color: #fff;
       font-family: 'Syne', sans-serif;
       font-weight: 700;
       font-size: 0.9rem;
       letter-spacing: 0.08em;
       cursor: pointer;
-      transition: opacity 0.2s;
+      transition: transform 0.2s, box-shadow 0.2s, opacity 0.2s;
+      box-shadow: 0 14px 30px rgba(37,99,235,0.22);
     }
-    button.primary:hover { opacity: 0.85; }
-    button.primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    button.primary:hover { transform: translateY(-1px); box-shadow: 0 18px 34px rgba(37,99,235,0.28); }
+    button.primary:disabled { opacity: 0.55; cursor: not-allowed; transform: none; }
 
     /* Results */
-    .results { display: flex; flex-direction: column; gap: 0.75rem; }
+    .results { display: flex; flex-direction: column; gap: 0.85rem; }
     .match-card {
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 1.1rem 1.25rem;
+      background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(245,250,255,0.95));
+      border: 1px solid rgba(37,99,235,0.12);
+      border-radius: 18px;
+      padding: 1rem 1.1rem;
       display: flex;
       align-items: center;
-      gap: 1rem;
-      transition: border-color 0.2s;
+      gap: 0.9rem;
+      transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
     }
-    .match-card:hover { border-color: #2e2e4e; }
-    .match-card.top { border-color: rgba(52,211,153,0.3); }
+    .match-card:hover { border-color: rgba(37,99,235,0.28); transform: translateY(-1px); box-shadow: 0 12px 26px rgba(37,99,235,0.08); }
+    .match-card.top { border-color: rgba(37,99,235,0.34); }
 
     .score-ring {
       width: 52px; height: 52px;
@@ -123,28 +144,28 @@
       justify-content: center;
       font-size: 0.7rem;
       font-weight: 600;
-      color: var(--text);
+      color: var(--accent);
     }
 
     .match-info { flex: 1; min-width: 0; }
     .match-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.95rem; color: var(--text); }
-    .match-meta { font-size: 0.7rem; color: var(--muted); margin-top: 0.2rem; }
-    .match-reason { font-size: 0.72rem; color: var(--subtext); margin-top: 0.4rem; line-height: 1.5; }
+    .match-meta { font-size: 0.7rem; color: var(--muted); margin-top: 0.25rem; }
+    .match-reason { font-size: 0.72rem; color: var(--subtext); margin-top: 0.45rem; line-height: 1.55; }
     .top-badge {
       font-size: 0.6rem;
       padding: 0.15rem 0.5rem;
-      background: rgba(52,211,153,0.1);
-      border: 1px solid rgba(52,211,153,0.3);
+      background: rgba(37,99,235,0.1);
+      border: 1px solid rgba(37,99,235,0.22);
       border-radius: 20px;
-      color: var(--green);
+      color: var(--accent);
       letter-spacing: 0.1em;
     }
 
     button.book-btn {
-      padding: 0.45rem 1rem;
-      background: transparent;
+      padding: 0.5rem 1rem;
+      background: #fff;
       border: 1px solid var(--border);
-      border-radius: 8px;
+      border-radius: 999px;
       color: var(--subtext);
       font-family: 'IBM Plex Mono', monospace;
       font-size: 0.7rem;
@@ -152,8 +173,8 @@
       transition: all 0.15s;
       flex-shrink: 0;
     }
-    button.book-btn:hover { border-color: var(--green); color: var(--green); }
-    button.book-btn.booked { border-color: var(--green); color: var(--green); cursor: default; }
+    button.book-btn:hover { border-color: var(--accent); color: var(--accent); box-shadow: 0 8px 18px rgba(37,99,235,0.08); }
+    button.book-btn.booked { border-color: var(--accent); color: var(--accent); cursor: default; }
 
     .status-msg {
       font-size: 0.75rem;
@@ -162,8 +183,8 @@
       border-radius: 8px;
       margin-top: 0.5rem;
     }
-    .status-msg.success { background: rgba(52,211,153,0.08); color: var(--green); border: 1px solid rgba(52,211,153,0.2); }
-    .status-msg.error   { background: rgba(239,68,68,0.08);  color: #f87171;      border: 1px solid rgba(239,68,68,0.2); }
+    .status-msg.success { background: rgba(37,99,235,0.08); color: var(--accent); border: 1px solid rgba(37,99,235,0.18); }
+    .status-msg.error   { background: rgba(239,68,68,0.08);  color: #dc2626;      border: 1px solid rgba(239,68,68,0.18); }
 
     .loading { text-align: center; color: var(--muted); font-size: 0.8rem; padding: 1.5rem; }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
@@ -185,24 +206,26 @@
       <label>MENTEE NAME</label>
       <input id="name" type="text" placeholder="e.g. Alex Johnson"/>
     </div>
-    <div>
-      <label>GRADE</label>
-      <select id="grade">
-        <option value="9">Grade 9</option>
-        <option value="10">Grade 10</option>
-        <option value="11">Grade 11</option>
-        <option value="12">Grade 12</option>
-      </select>
-    </div>
-    <div>
-      <label>SUBJECT NEEDED</label>
-      <select id="subject">
-        <option value="Math">Math</option>
-        <option value="Physics">Physics</option>
-        <option value="Chemistry">Chemistry</option>
-        <option value="Biology">Biology</option>
-        <option value="English">English</option>
-      </select>
+    <div class="field-grid">
+      <div>
+        <label>GRADE</label>
+        <select id="grade">
+          <option value="9">Grade 9</option>
+          <option value="10">Grade 10</option>
+          <option value="11">Grade 11</option>
+          <option value="12">Grade 12</option>
+        </select>
+      </div>
+      <div>
+        <label>SUBJECT NEEDED</label>
+        <select id="subject">
+          <option value="Math">Math</option>
+          <option value="Physics">Physics</option>
+          <option value="Chemistry">Chemistry</option>
+          <option value="Biology">Biology</option>
+          <option value="English">English</option>
+        </select>
+      </div>
     </div>
   </div>
   <button class="primary" id="find-btn" onclick="findMatches()">FIND MATCHES →</button>
