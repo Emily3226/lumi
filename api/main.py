@@ -25,7 +25,7 @@ from rag.retriever import MentorRetriever
 from models.inference import score_candidates
 from api.chat import router as chat_router
 
-app = FastAPI(title="Auxilizium Mentor Matcher")
+app = FastAPI(title="Lumi Mentor Matcher")
 app.include_router(chat_router)
 
 app.add_middleware(
@@ -41,7 +41,7 @@ retriever = MentorRetriever()
 
 # ── SQLite setup ──────────────────────────────────────────────────────────────
 def get_db():
-    conn = sqlite3.connect("data/auxilizium.db")
+    conn = sqlite3.connect("data/lumi.db")
     conn.row_factory = sqlite3.Row
     return conn
 

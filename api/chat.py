@@ -217,7 +217,7 @@ class ChatResponse(BaseModel):
 import sqlite3
 
 def get_db():
-    conn = sqlite3.connect("data/auxilizium.db")
+    conn = sqlite3.connect("data/lumi.db")
     conn.row_factory = sqlite3.Row
     return conn
 
