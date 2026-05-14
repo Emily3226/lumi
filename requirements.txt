@@ -7,3 +7,4 @@ sentence-transformers>=2.7.0
 fastapi>=0.115.0
 uvicorn>=0.30.0
 pydantic>=2.0.0
+langchain-core>=0.3.0

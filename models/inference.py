@@ -9,6 +9,8 @@ import os
 import joblib
 import numpy as np
 
+from rag.subject_utils import subject_matches
+
 
 # Try to load the trained model
 _MODEL_CACHE = None
@@ -25,10 +27,10 @@ def _load_trained_model():
         try:
             _MODEL_CACHE = joblib.load(model_path)
             _MODEL_AVAILABLE = True
-            print("✓ Loaded trained mentor matcher model")
+            print("Loaded trained mentor matcher model")
             return _MODEL_CACHE
         except Exception as e:
-            print(f"⚠ Failed to load trained model: {e}. Falling back to heuristic.")
+            print(f"Warning: failed to load trained model: {e}. Falling back to heuristic.")
             _MODEL_AVAILABLE = False
             return None
     return None
@@ -50,7 +52,7 @@ def _ml_score(mentee: dict, mentor: dict, trained_model: dict) -> float:
         mentee_grade = float(mentee.get("grade", 0))
         
         # Extract same features used in training
-        subject_match = 1.0 if mentor.get("subject") == mentee.get("subject") else 0.5
+        subject_match = 1.0 if subject_matches(mentor.get("subject"), mentee.get("subject_hint") or mentee.get("subject")) else 0.5
         grade_gap = abs(mentor_grade - mentee_grade)
         senior = 1.0 if mentor_grade > mentee_grade else 0.0
         grade_similarity = max(0.0, 1.0 - (grade_gap / 4.0))
@@ -61,13 +63,13 @@ def _ml_score(mentee: dict, mentor: dict, trained_model: dict) -> float:
         
         return _normalize_score(score)
     except Exception as e:
-        print(f"⚠ ML scoring failed: {e}. Using heuristic.")
+        print(f"Warning: ML scoring failed: {e}. Using heuristic.")
         return _heuristic_score(mentee, mentor)
 
 
 
 def _heuristic_score(mentee: dict, mentor: dict) -> float:
-    subject_match = 1.0 if mentor.get("subject") == mentee.get("subject") else 0.0
+    subject_match = 1.0 if subject_matches(mentor.get("subject"), mentee.get("subject_hint") or mentee.get("subject")) else 0.0
     grade_gap = abs(int(mentor.get("grade", 0)) - int(mentee.get("grade", 0)))
     senior_bonus = 1.0 if int(mentor.get("grade", 0)) > int(mentee.get("grade", 0)) else 0.0
     qualification_bonus = 1.0 if mentor.get("qualifications") else 0.0
@@ -107,8 +109,8 @@ def score_candidates(mentee: dict, candidates: list[dict], strict: bool = False)
 
         # Generate a simple rule-based explanation
         reasons = []
-        if mentor["subject"] == mentee["subject"]:
-            reasons.append(f"teaches {mentee['subject']}")
+        if subject_matches(mentor["subject"], mentee.get("subject_hint") or mentee["subject"]):
+            reasons.append(f"teaches {mentee.get('subject_hint') or mentee['subject']}")
         if int(mentor["grade"]) > int(mentee["grade"]):
             diff = int(mentor["grade"]) - int(mentee["grade"])
             reasons.append(f"{diff} grade{'s' if diff > 1 else ''} ahead")

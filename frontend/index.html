@@ -20,9 +20,7 @@
       <label>Grade
         <select id="grade"><option>9</option><option>10</option><option>11</option><option>12</option></select>
       </label>
-      <label>Subject
-        <select id="subject"><option>Math</option><option>Physics</option><option>Chemistry</option><option>Biology</option><option>English</option></select>
-      </label>
+      <label>Help request or skill<input id="query" placeholder="I need help with calculus" required /></label>
       <button type="submit">Find Matches</button>
     </form>
     <div id="results"></div>
@@ -34,7 +32,8 @@
       form.addEventListener('submit', async (e)=>{
         e.preventDefault();
         resEl.textContent='Searching...';
-        const body={mentee_name:document.getElementById('name').value, mentee_grade:parseInt(document.getElementById('grade').value), mentee_subject:document.getElementById('subject').value};
+        const query=document.getElementById('query').value;
+        const body={mentee_name:document.getElementById('name').value, mentee_grade:parseInt(document.getElementById('grade').value), mentee_subject:query, mentee_query:query};
         try{
           const r=await fetch(API+'/match',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
           const data=await r.json();

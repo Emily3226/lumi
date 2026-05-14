@@ -9,12 +9,15 @@ sentence-transformers is built on top of the same transformer
 architecture from CS230.
 """
 
-import json
+from __future__ import annotations
+
 import numpy as np
 import os
 import sqlite3
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+
+from rag.subject_utils import SUBJECT_ALIASES, expand_query_text, subject_key
 
 # This model runs 100% locally — no API key needed
 MODEL_NAME = "all-MiniLM-L6-v2"
@@ -27,7 +30,7 @@ class MentorRetriever:
         # Try to load mentors from the SQLite DB (only available mentors)
         self.mentors = self._load_mentors_from_db() or self._load_mentors_from_csv(csv_path)
         self.index = self._build_index()
-        print(f"RAG index built — {len(self.mentors)} mentor profiles indexed")
+        print(f"RAG index built - {len(self.mentors)} mentor profiles indexed")
 
     def _connect_db(self):
         db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "lumi.db")
@@ -36,6 +39,13 @@ class MentorRetriever:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         return conn
+
+    def _alias_text(self, subject: str | None) -> str:
+        key = subject_key(subject)
+        if not key:
+            return (subject or "").strip()
+        aliases = ", ".join((key, *SUBJECT_ALIASES[key]))
+        return f"{key}. Related topics: {aliases}."
 
     def _load_mentors_from_db(self) -> list[dict] | None:
         conn = self._connect_db()
@@ -49,7 +59,11 @@ class MentorRetriever:
         mentors = []
         for r in rows:
             name = r['name']
-            profile_text = f"{name} is a grade {r['grade']} student who wants to teach {r['subject']}. Qualifications: {r['qualifications']}."
+            profile_text = (
+                f"{name} is a grade {r['grade']} student who wants to teach {r['subject']}. "
+                f"{self._alias_text(r['subject'])} "
+                f"Qualifications: {r['qualifications']}."
+            )
             mentors.append({
                 'name': name,
                 'grade': int(r['grade']) if r['grade'] is not None else 0,
@@ -72,6 +86,7 @@ class MentorRetriever:
             profile_text = (
                 f"{name} is a grade {row['mentor_grade']} student "
                 f"who wants to teach {row['mentor_subject']}. "
+                f"{self._alias_text(row['mentor_subject'])} "
                 f"Qualifications: {row['mentor_qualifications']}."
             )
             mentors.append({
@@ -84,12 +99,20 @@ class MentorRetriever:
         return mentors
 
     def _build_index(self) -> np.ndarray:
+        if not self.mentors:
+            return np.empty((0, 0))
         texts = [m['profile_text'] for m in self.mentors]
         return self.model.encode(texts, show_progress_bar=False)
 
-    def retrieve(self, mentee_subject: str, mentee_grade: int, top_k: int = 3) -> list[dict]:
-        query = f"Looking for a mentor to teach {mentee_subject} for a grade {mentee_grade} student."
-        query_vec = self.model.encode([query])
+    def retrieve(self, query_text: str, mentee_grade: int | None = None, top_k: int = 3) -> list[dict]:
+        if not self.mentors:
+            return []
+
+        query = expand_query_text(query_text)
+        if mentee_grade is not None:
+            query = f"{query}\nThe mentee is in grade {mentee_grade}."
+
+        query_vec = self.model.encode([query], show_progress_bar=False)
         similarities = cosine_similarity(query_vec, self.index)[0]
         top_indices = similarities.argsort()[::-1][:top_k]
         results = []

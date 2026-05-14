@@ -24,9 +24,27 @@
       .avatar.user{background:var(--user)}
       .avatar.bot{background:var(--bot)}
       .meta{font-size:12px;color:var(--muted);margin-top:6px}
+      .status-row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 12px}
+      .status-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#eef2ff;color:#2f3a8f;border:1px solid #dbe3ff}
+      .status-pill[data-state="idle"]{background:#ecfeff;color:#155e75;border-color:#bae6fd}
+      .status-pill[data-state="showing_results"]{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
+      .status-pill[data-state="awaiting_booking_name"]{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
+      .status-pill[data-state="booked"]{background:#f0fdf4;color:#166534;border-color:#86efac}
+      .panel{margin-top:12px;border:1px solid rgba(15,23,42,0.08);border-radius:14px;background:#fff;padding:12px}
+      .panel h2{font-size:13px;margin:0 0 10px;color:#0f172a;text-transform:uppercase;letter-spacing:0.08em}
+      .match-list{display:grid;gap:10px}
+      .match-card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:linear-gradient(180deg,#ffffff,#f8fbff)}
+      .match-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+      .match-rank{font-size:12px;font-weight:700;color:#0f172a;background:#e0f2fe;padding:4px 8px;border-radius:999px}
+      .match-score{font-size:12px;font-weight:700;color:#166534}
+      .match-name{font-size:16px;font-weight:700;margin:4px 0 6px}
+      .match-meta{font-size:13px;color:#475569}
+      .match-expl{margin-top:8px;font-size:13px;color:#334155;line-height:1.45}
+      .book-state{margin-top:10px;padding:10px 12px;border-radius:12px;background:#eff6ff;color:#1d4ed8;font-size:13px;font-weight:600}
       .quick-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
       .quick-action{background:#eef2ff;color:#2f3a8f;box-shadow:none;border:1px solid #dbe3ff}
       .quick-action:hover{background:#e3e9ff}
+      .quick-action.active{background:#2563eb;color:#fff;border-color:#1d4ed8}
       .composer{display:flex;gap:10px;margin-top:12px}
       textarea{flex:1;min-height:64px;border-radius:10px;padding:10px;border:1px solid rgba(15,23,42,0.06);resize:none;font-size:14px}
       button{background:var(--accent);color:white;border:none;padding:10px 14px;border-radius:10px;cursor:pointer;box-shadow:0 6px 18px rgba(108,92,231,0.18)}
@@ -45,13 +63,24 @@
       </header>
 
       <div class="quick-actions">
-        <button type="button" class="quick-action" data-message="help">What can you do?</button>
-        <button type="button" class="quick-action" data-message="show all mentors">Show all mentors</button>
-        <button type="button" class="quick-action" data-message="find match">Find a match</button>
-        <button type="button" class="quick-action" data-message="restart">Restart</button>
+        <button type="button" class="quick-action active" data-agent="general">General Agent</button>
+        <button type="button" class="quick-action" data-agent="match">Match Agent</button>
+        <button type="button" class="quick-action" data-agent="booking">Booking Agent</button>
+      </div>
+
+      <div class="status-row" id="status-row">
+        <span class="status-pill" id="agent-pill">Agent: general</span>
+        <span class="status-pill" data-state="idle" id="state-pill">State: idle</span>
+        <span class="status-pill" id="booking-pill">Booking: none</span>
       </div>
 
       <div id="messages" aria-live="polite"></div>
+
+      <div class="panel" id="results-panel" style="display:none;">
+        <h2>Top Matches</h2>
+        <div class="match-list" id="match-list"></div>
+        <div class="book-state" id="book-state" style="display:none;"></div>
+      </div>
 
       <div class="composer">
         <textarea id="input" placeholder="Ask me anything about finding a mentor or booking a session..."></textarea>
@@ -65,10 +94,23 @@
       const API = 'http://localhost:8000';
       const SESSION = 'session_' + Math.random().toString(36).slice(2,9);
       const messagesEl = document.getElementById('messages');
+      const resultsPanel = document.getElementById('results-panel');
+      const matchListEl = document.getElementById('match-list');
+      const statePill = document.getElementById('state-pill');
+      const agentPill = document.getElementById('agent-pill');
+      const bookingPill = document.getElementById('booking-pill');
+      const bookStateEl = document.getElementById('book-state');
       const inputEl = document.getElementById('input');
+      let selectedAgent = 'general';
       document.getElementById('send').onclick = send;
       document.querySelectorAll('.quick-action').forEach((button) => {
-        button.addEventListener('click', () => sendQuickMessage(button.dataset.message));
+        button.addEventListener('click', () => {
+          selectedAgent = button.dataset.agent || 'general';
+          document.querySelectorAll('.quick-action').forEach((item) => item.classList.remove('active'));
+          button.classList.add('active');
+          agentPill.textContent = `Agent: ${selectedAgent}`;
+          add('bot', `Switched to ${selectedAgent} agent.`);
+        });
       });
       inputEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } });
 
@@ -84,13 +126,45 @@
         messagesEl.scrollTop = messagesEl.scrollHeight;
       }
 
+      function renderMatches(matches){
+        if (!matches || !matches.length){
+          resultsPanel.style.display = 'none';
+          matchListEl.innerHTML = '';
+          return;
+        }
+        resultsPanel.style.display = 'block';
+        matchListEl.innerHTML = matches.map((match, index) => {
+          const score = Math.round((match.match_score || 0) * 100);
+          return `
+            <div class="match-card">
+              <div class="match-top">
+                <div class="match-rank">#${index + 1}</div>
+                <div class="match-score">${score}%</div>
+              </div>
+              <div class="match-name">${match.name}</div>
+              <div class="match-meta">Grade ${match.grade} - ${match.subject} - ${match.qualifications || 'No qualifications listed'}</div>
+              <div class="match-expl">${match.explanation || 'Potential match.'}</div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      function updateState(data){
+        const state = data.state || 'idle';
+        const bookingState = data.booking_state || 'none';
+        statePill.textContent = `State: ${state.replace(/_/g, ' ')}`;
+        statePill.dataset.state = state;
+        bookingPill.textContent = `Booking: ${bookingState.replace(/_/g, ' ')}`;
+        bookingPill.dataset.state = bookingState;
+        bookStateEl.style.display = bookingState && bookingState !== 'none' ? 'block' : 'none';
+        bookStateEl.textContent = bookingState && bookingState !== 'none'
+          ? `Booking state: ${bookingState.replace(/_/g, ' ')}`
+          : '';
+      }
+
       async function send(){
         const text = inputEl.value.trim(); if(!text) return;
         inputEl.value = '';
-        await sendMessage(text);
-      }
-
-      async function sendQuickMessage(text){
         await sendMessage(text);
       }
 
@@ -99,11 +173,13 @@
         try{
           const res = await fetch(API + '/chat', {
             method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({session_id: SESSION, message: text})
+            body: JSON.stringify({session_id: SESSION, message: text, forced_agent: selectedAgent})
           });
           if(!res.ok) throw new Error('Bad response');
           const data = await res.json();
           add('bot', data.reply || 'Sorry, no reply.');
+          updateState(data);
+          renderMatches(data.matches);
         }catch(e){
           add('bot', 'Could not reach backend. Is it running at http://localhost:8000 ?');
         }
