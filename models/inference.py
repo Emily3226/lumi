@@ -69,15 +69,23 @@ def _ml_score(mentee: dict, mentor: dict, trained_model: dict) -> float:
 
 
 def _heuristic_score(mentee: dict, mentor: dict) -> float:
+    mentee_grade = int(mentee.get("grade", 0) or 0)
+    mentor_grade = int(mentor.get("grade", 0) or 0)
+    has_grade = mentee_grade > 0
+    has_subject_hint = bool((mentee.get("subject_hint") or "").strip())
+
     subject_match = 1.0 if subject_matches(mentor.get("subject"), mentee.get("subject_hint") or mentee.get("subject")) else 0.0
-    grade_gap = abs(int(mentor.get("grade", 0)) - int(mentee.get("grade", 0)))
-    senior_bonus = 1.0 if int(mentor.get("grade", 0)) > int(mentee.get("grade", 0)) else 0.0
+    grade_gap = abs(mentor_grade - mentee_grade) if has_grade else 0
+    senior_bonus = 1.0 if (has_grade and mentor_grade > mentee_grade) else 0.0
     qualification_bonus = 1.0 if mentor.get("qualifications") else 0.0
     similarity_bonus = float(mentor.get("similarity_score", 0.0))
 
+    grade_component = max(0.0, 1.0 - (grade_gap / 3.0)) if has_grade else 0.0
+    subject_weight = 0.45 if has_subject_hint else 0.10
+
     score = (
-        0.45 * subject_match
-        + 0.20 * max(0.0, 1.0 - (grade_gap / 3.0))
+        subject_weight * subject_match
+        + 0.20 * grade_component
         + 0.20 * senior_bonus
         + 0.10 * qualification_bonus
         + 0.05 * similarity_bonus
