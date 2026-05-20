@@ -230,7 +230,7 @@ class MentorTaskAgents:
         normalized = _normalize(message)
 
         if not tokens:
-            return "Ask me about mentor matching, booking, or available subjects, and I can help."
+            return "Ask me anything - I can help with mentor matching, general questions, or just chat."
 
         if _contains_any(tokens, {"day", "date", "today"}):
             day_name = datetime.now().strftime("%A")
@@ -245,10 +245,10 @@ class MentorTaskAgents:
             return "I don't have access to your school's calendar, but grading cycles typically end at the conclusion of each term or semester. Check with your school for specific dates."
 
         if _contains_any(tokens, {"hi", "hello", "hey", "yo", "sup"}):
-            return "Hi. I can help you understand matching, booking, and mentor availability."
+            return "Hi! I'm here to help with mentor matching, answer questions, or just chat."
 
         if _contains_any(tokens, {"thanks", "thank", "thx", "appreciate"}):
-            return "You are welcome."
+            return "You're welcome!"
 
         if _contains_any(tokens, {"how", "works", "work", "matching", "match", "algorithm", "scoring"}) and _contains_any(tokens, {"match", "matching", "mentor"}):
             return "Matching uses two steps: RAG retrieves relevant mentor profiles from your freeform text, then a matcher rescoring ranks the best fits."
@@ -283,7 +283,76 @@ class MentorTaskAgents:
                 top = matches[0]
                 pct = round(float(top.get("match_score") or 0) * 100)
                 return f"Your current top match is {top.get('name', 'Unknown')} at {pct}% for {top.get('subject', 'the selected subject')}."
-            return "I do not have match results yet. Use Match Agent and describe what help is needed."
+            return "I do not have match results yet. Ask me to find a mentor first."
+
+        if _contains_any(tokens, {"name"}) and _contains_any(tokens, {"what", "your", "is", "who"}):
+            return "I'm Lumi, a mentor matching assistant. I help you find the right tutor and book sessions."
+
+        if _contains_any(tokens, {"study", "tips", "advice", "help", "improve"}) and _contains_any(tokens, {"study", "learning", "grade", "score"}):
+            return "Study tips: Take breaks every 25-30 min, find a quiet space, review notes before bed, and teach the material to someone else to check understanding. A good mentor can really accelerate learning."
+
+        if _contains_any(tokens, {"motivation", "motivate", "tired", "lazy", "procrastinate", "don't", "dont"}) and len(tokens) >= 3:
+            return "Remember why you started! Breaking work into smaller chunks makes it feel less overwhelming. And having a mentor can provide accountability and personalized guidance that keeps you on track."
+
+        if _contains_any(tokens, {"math", "calculus", "algebra", "geometry"}) and _contains_any(tokens, {"definition", "what", "explain", "mean"}):
+            if "calculus" in normalized:
+                return "Calculus studies rates of change and accumulation. It has two main branches: differential calculus (derivatives/slopes) and integral calculus (areas/totals). A math mentor can make this intuitive!"
+            elif "algebra" in normalized:
+                return "Algebra uses symbols and rules to solve equations and understand relationships. The key is balancing both sides of an equation. Start with basics and build from there."
+            elif "geometry" in normalized:
+                return "Geometry studies shapes, angles, and spatial relationships. It combines visual reasoning with logical proofs. Drawing diagrams often helps unlock solutions."
+            return "Math builds on foundations step by step. Don't skip concepts - they usually connect later. A tutor can identify gaps and fill them."
+
+        if _contains_any(tokens, {"physics", "chemistry", "biology"}) and _contains_any(tokens, {"definition", "what", "explain", "hard", "difficult"}):
+            if "physics" in normalized:
+                return "Physics explains how the natural world works - motion, forces, energy, waves. Start by understanding concepts before diving into equations."
+            elif "chemistry" in normalized:
+                return "Chemistry is about how substances interact and transform. Understanding atoms, bonds, and reactions is key. Visual models and hands-on labs help a lot."
+            elif "biology" in normalized:
+                return "Biology studies living systems from cells to ecosystems. Learn the vocabulary and relationships between concepts. It all connects!"
+            return "Science subjects build on each other. Understand concepts deeply, not just memorize. A science tutor can make abstract ideas concrete."
+
+        if _contains_any(tokens, {"english", "writing", "essay", "grammar", "reading"}):
+            return "For writing: outline first, draft freely, then edit ruthlessly. For grammar: understand the rules, then break them intentionally. Reading widely improves all writing. Practice with feedback helps most."
+
+        if _contains_any(tokens, {"test", "exam", "exam", "prepare", "study"}) and _contains_any(tokens, {"prepare", "ready", "tips", "how"}):
+            return "Exam prep: review old tests/practice problems, make study guides, teach concepts aloud, get sleep before the exam, and stay calm. Mentors are great for targeted review of weak areas."
+
+        if _contains_any(tokens, {"homework", "assignment", "due", "deadline"}):
+            return "Stay organized with a calendar. Break assignments into steps with mini-deadlines. Start early so you have time for revisions. If stuck, reach out to a tutor or peer for a fresh perspective."
+
+        if _contains_any(tokens, {"sleep", "tired", "focus", "concentrate", "distracted"}):
+            return "Sleep is critical for memory and focus. Aim for 7-9 hours. If you're struggling to concentrate, take 5-10 min breaks, hydrate, and study in a quiet space. Consistency matters more than duration."
+
+        if _contains_any(tokens, {"stress", "stressed", "anxious", "anxiety", "overwhelm", "overwhelmed", "pressure", "cope"}) and len(tokens) >= 2:
+            return "Stress is normal but manageable. Break tasks down, prioritize, take breaks, and talk to someone you trust. Remember you're not alone - many students feel the same way. Consider reaching out to school counselors too."
+
+        if _contains_any(tokens, {"school", "class", "teacher", "difficult", "hard"}):
+            return "Every student struggles sometimes. The key is asking for help early. Teachers, tutors, and peers are all resources. Don't wait until the last minute to address gaps."
+
+        if _contains_any(tokens, {"joke", "funny", "laugh", "entertai"}) and _contains_any(tokens, {"joke", "funny", "me"}):
+            jokes = [
+                "Why did the student do math in the garden? Because they wanted to improve their roots.",
+                "What did the math teacher say to the student? You're a fraction of what you could be!",
+                "I tried to do chemistry homework but it was too ionic an experience.",
+                "History class is so old... it can't even remember what happened.",
+            ]
+            return jokes[len(tokens) % len(jokes)]
+
+        if _contains_any(tokens, {"cool", "awesome", "great", "good", "nice"}):
+            return "Glad you're in a good mood! That energy is great for learning. If you need help or want to find a mentor, I'm here."
+
+        if _contains_any(tokens, {"sad", "bad", "terrible", "awful", "hate"}):
+            return "Sorry to hear you're having a rough time. Remember it's temporary and gets better. Take care of yourself and reach out for support when needed. A good mentor can be encouraging too."
+
+        if _contains_any(tokens, {"love", "like", "best", "favorite", "prefer"}) and _contains_any(tokens, {"subject", "learning", "subject"}):
+            return "That's great! Finding your passion in a subject makes learning so much more enjoyable. A mentor in that area can deepen your knowledge even further."
+
+        if _contains_any(tokens, {"question", "ask", "confused", "stuck", "help"}) and len(tokens) >= 3:
+            return "What's your question? I can help with mentor matching, or if it's about school subjects, I can point you in the right direction or find a tutor."
+
+        if len(normalized) > 5 and _contains_any(tokens, {"what", "how", "why", "when", "where"}):
+            return "That's a great question! I'm specialized in mentor matching and general study help, but I can try to point you in the right direction. What would help most?"
 
         return None
 
