@@ -6,50 +6,94 @@
     <title>Lumi Chat</title>
     <style>
       :root{
-        --bg:#f5f7fb; --card:#ffffff; --accent:#6c5ce7; --user:#00b894; --bot:#0984e3; --muted:#6b7280;
+        --bg:#f5f7fb; --card:#ffffff; --accent:#6c5ce7;
+        --user:#00b894; --bot:#0984e3; --muted:#6b7280; --contest:#e17055;
       }
       html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Helvetica,Arial;background:var(--bg);color:#111}
-      .container{max-width:820px;margin:36px auto;padding:20px;border-radius:12px;background:#ffffff;box-shadow:0 6px 24px rgba(21,32,43,0.08)}
+      .container{max-width:860px;margin:36px auto;padding:20px;border-radius:12px;background:#fff;box-shadow:0 6px 24px rgba(21,32,43,0.08)}
       header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
-      .logo{width:44px;height:44px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:white;font-weight:700}
+      .logo{width:44px;height:44px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:18px}
       h1{font-size:18px;margin:0}
-      #messages{background:var(--card);border-radius:8px;padding:14px;height:420px;overflow:auto;border:1px solid rgba(15,23,42,0.04)}
+      .meta{font-size:12px;color:var(--muted);margin-top:2px}
+      #messages{background:var(--card);border-radius:8px;padding:14px;height:380px;overflow:auto;border:1px solid rgba(15,23,42,0.06)}
       .msg{display:flex;gap:10px;align-items:flex-end;margin:8px 0}
-      .msg .bubble{max-width:72%;padding:10px 14px;border-radius:14px;line-height:1.35;white-space:pre-wrap}
+      .bubble{max-width:74%;padding:10px 14px;border-radius:14px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
       .msg.user{justify-content:flex-end}
       .msg.user .bubble{background:var(--user);color:#04311a;border-bottom-right-radius:4px}
-      .msg.bot{justify-content:flex-start}
-      .msg.bot .bubble{background:var(--bot);color:#082544;border-bottom-left-radius:4px}
-      .avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:600}
+      .msg.bot .bubble{background:var(--bot);color:#e8f4ff;border-bottom-left-radius:4px}
+      .msg.bot .bubble strong{color:#fff}
+      .avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:600;flex-shrink:0;font-size:15px}
       .avatar.user{background:var(--user)}
       .avatar.bot{background:var(--bot)}
-      .meta{font-size:12px;color:var(--muted);margin-top:6px}
+      .avatar.contest{background:var(--contest)}
+
+      /* Status pills */
       .status-row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 12px}
-      .status-pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#eef2ff;color:#2f3a8f;border:1px solid #dbe3ff}
+      .status-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#eef2ff;color:#2f3a8f;border:1px solid #dbe3ff}
       .status-pill[data-state="idle"]{background:#ecfeff;color:#155e75;border-color:#bae6fd}
       .status-pill[data-state="showing_results"]{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
       .status-pill[data-state="awaiting_booking_name"]{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
-      .status-pill[data-state="booked"]{background:#f0fdf4;color:#166534;border-color:#86efac}
+
+      /* Agent buttons */
+      .quick-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+      .quick-action{background:#eef2ff;color:#2f3a8f;border:1px solid #dbe3ff;font-size:13px;padding:7px 13px;border-radius:10px;cursor:pointer}
+      .quick-action:hover{background:#e3e9ff}
+      .quick-action.active{background:#2563eb;color:#fff;border-color:#1d4ed8}
+      .quick-action.contest-btn{background:#fff7ed;color:#9a3412;border-color:#fed7aa}
+      .quick-action.contest-btn:hover{background:#ffedd5}
+      .quick-action.contest-btn.active{background:var(--contest);color:#fff;border-color:#c2410c}
+
+      /* Mentor match panel */
       .panel{margin-top:12px;border:1px solid rgba(15,23,42,0.08);border-radius:14px;background:#fff;padding:12px}
-      .panel h2{font-size:13px;margin:0 0 10px;color:#0f172a;text-transform:uppercase;letter-spacing:0.08em}
-      .match-list{display:grid;gap:10px}
-      .match-card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:linear-gradient(180deg,#ffffff,#f8fbff)}
+      .panel h2{font-size:12px;margin:0 0 10px;color:#0f172a;text-transform:uppercase;letter-spacing:0.08em}
+      .match-card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:linear-gradient(180deg,#fff,#f8fbff);margin-bottom:8px}
       .match-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
       .match-rank{font-size:12px;font-weight:700;color:#0f172a;background:#e0f2fe;padding:4px 8px;border-radius:999px}
       .match-score{font-size:12px;font-weight:700;color:#166534}
-      .match-name{font-size:16px;font-weight:700;margin:4px 0 6px}
+      .match-name{font-size:15px;font-weight:700;margin:4px 0 4px}
       .match-meta{font-size:13px;color:#475569}
-      .match-expl{margin-top:8px;font-size:13px;color:#334155;line-height:1.45}
+      .match-expl{margin-top:6px;font-size:13px;color:#334155;line-height:1.45}
       .book-state{margin-top:10px;padding:10px 12px;border-radius:12px;background:#eff6ff;color:#1d4ed8;font-size:13px;font-weight:600}
-      .quick-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-      .quick-action{background:#eef2ff;color:#2f3a8f;box-shadow:none;border:1px solid #dbe3ff}
-      .quick-action:hover{background:#e3e9ff}
-      .quick-action.active{background:#2563eb;color:#fff;border-color:#1d4ed8}
+
+      /* Contest problem panel */
+      .contest-panel{margin-top:12px;border:1px solid #fed7aa;border-radius:14px;background:#fff7ed;padding:14px}
+      .contest-panel h2{font-size:12px;margin:0 0 12px;color:#9a3412;text-transform:uppercase;letter-spacing:0.08em}
+
+      /* Problem card — image-based display */
+      .problem-card{border:1px solid #fdba74;border-radius:12px;background:#fff;margin-bottom:12px;overflow:hidden}
+      .problem-card-header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid #fde8c8;background:#fff8f0}
+      .problem-title{font-size:14px;font-weight:700;color:#0f172a}
+      .topic-chips{display:flex;gap:5px;flex-wrap:wrap}
+      .topic-chip{font-size:11px;padding:2px 7px;border-radius:999px;background:#fef3c7;color:#92400e;border:1px solid #fde68a;font-weight:600}
+      .diagram-badge{font-size:11px;padding:2px 7px;border-radius:999px;background:#ede9fe;color:#5b21b6;border:1px solid #ddd6fe;font-weight:600}
+
+      /* The actual PDF page image */
+      .problem-image-wrap{padding:12px;text-align:center;background:#fafafa}
+      .problem-image-wrap img{max-width:100%;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
+      .problem-loading{padding:24px;text-align:center;color:#9a3412;font-size:13px}
+      .problem-error{padding:14px;color:#dc2626;font-size:13px;background:#fef2f2;border-top:1px solid #fecaca}
+
+      /* Problem action bar */
+      .problem-actions{display:flex;gap:8px;padding:10px 14px;border-top:1px solid #fde8c8;background:#fff8f0}
+      .prob-btn{font-size:12px;padding:5px 11px;border-radius:8px;cursor:pointer;border:1px solid;font-weight:500}
+      .prob-btn.solution{background:#fff7ed;color:#ea580c;border-color:#fed7aa}
+      .prob-btn.solution:hover{background:#ffedd5}
+      .prob-btn.solution.active{background:#ea580c;color:#fff;border-color:#c2410c}
+      .prob-btn.nav{background:#f8fafc;color:#475569;border-color:#e2e8f0}
+      .prob-btn.nav:hover{background:#f1f5f9}
+
+      /* Suggestion chips */
+      .contest-chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:6px}
+      .contest-chip{font-size:12px;padding:5px 11px;border-radius:999px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;cursor:pointer;font-weight:500}
+      .contest-chip:hover{background:#ffedd5}
+
+      /* Composer */
       .composer{display:flex;gap:10px;margin-top:12px}
-      textarea{flex:1;min-height:64px;border-radius:10px;padding:10px;border:1px solid rgba(15,23,42,0.06);resize:none;font-size:14px}
-      button{background:var(--accent);color:white;border:none;padding:10px 14px;border-radius:10px;cursor:pointer;box-shadow:0 6px 18px rgba(108,92,231,0.18)}
+      textarea{flex:1;min-height:60px;border-radius:10px;padding:10px;border:1px solid rgba(15,23,42,0.1);resize:none;font-size:14px;font-family:inherit}
+      button{background:var(--accent);color:white;border:none;padding:10px 16px;border-radius:10px;cursor:pointer;font-size:14px;font-weight:500}
+      button:hover{opacity:0.92}
       button:active{transform:translateY(1px)}
-      @media(max-width:640px){.container{margin:18px;padding:14px}.logo{width:36px;height:36px}}
+      @media(max-width:640px){.container{margin:12px;padding:12px}}
     </style>
   </head>
   <body>
@@ -58,13 +102,14 @@
         <div class="logo">LM</div>
         <div>
           <h1>Lumi</h1>
-          <div class="meta">Find mentors and book sessions for academic help.</div>
+          <div class="meta">Find mentors, book sessions, and explore Waterloo contest problems.</div>
         </div>
       </header>
 
       <div class="quick-actions">
         <button type="button" class="quick-action active" data-agent="general">General Agent</button>
         <button type="button" class="quick-action" data-agent="match">Match Agent</button>
+        <button type="button" class="quick-action contest-btn" data-agent="contest">🏆 Contest Help</button>
       </div>
 
       <div class="status-row" id="status-row">
@@ -84,118 +129,259 @@
 
       <div id="messages" aria-live="polite"></div>
 
-      <div class="panel" id="results-panel" style="display:none;">
+      <!-- Mentor match panel -->
+      <div class="panel" id="results-panel" style="display:none">
         <h2>Top Matches</h2>
-        <div class="match-list" id="match-list"></div>
-        <div class="book-state" id="book-state" style="display:none;"></div>
+        <div id="match-list"></div>
+        <div class="book-state" id="book-state" style="display:none"></div>
+      </div>
+
+      <!-- Contest problem panel -->
+      <div class="contest-panel" id="contest-panel" style="display:none">
+        <h2>📐 Contest Problems</h2>
+        <div id="problem-list"></div>
+        <div id="contest-chips-wrap" style="display:none">
+          <div style="font-size:12px;color:#9a3412;margin-bottom:5px;font-weight:600">Try asking:</div>
+          <div class="contest-chips" id="contest-chips"></div>
+        </div>
       </div>
 
       <div class="composer">
-        <textarea id="input" placeholder="Ask me anything about finding a mentor or booking a session..."></textarea>
-        <div style="display:flex;flex-direction:column;gap:8px">
-          <button id="send">Send</button>
-        </div>
+        <textarea id="input" placeholder="Ask me anything — find a mentor, book a session, or explore contest problems..."></textarea>
+        <button id="send">Send</button>
       </div>
     </div>
 
     <script>
       const API = 'http://localhost:8000';
-      const SESSION = 'session_' + Math.random().toString(36).slice(2,9);
+      const SESSION = 'session_' + Math.random().toString(36).slice(2, 9);
       const messagesEl = document.getElementById('messages');
-      const resultsPanel = document.getElementById('results-panel');
-      const matchListEl = document.getElementById('match-list');
-      const statePill = document.getElementById('state-pill');
-      const agentPill = document.getElementById('agent-pill');
-      const bookingPill = document.getElementById('booking-pill');
-      const bookStateEl = document.getElementById('book-state');
       const inputEl = document.getElementById('input');
       let selectedAgent = 'general';
-      function displayAgentName(a){ return a === 'general' ? 'General' : a === 'match' ? 'Match' : a }
-      document.getElementById('send').onclick = send;
+      let lastProblems = [];
+      function displayAgentName(a){ return a === 'general' ? 'General' : a === 'match' ? 'Match' : a === 'contest' ? 'Contest' : a }
+
+      // ── Agent switching ─────────────────────────────────────────────────────
       document.querySelectorAll('.quick-actions .quick-action').forEach((button) => {
         button.addEventListener('click', () => {
           selectedAgent = button.dataset.agent || 'general';
           document.querySelectorAll('.quick-action').forEach((item) => item.classList.remove('active'));
           button.classList.add('active');
-          agentPill.textContent = `Agent: ${displayAgentName(selectedAgent)}`;
-          add('bot', `Switched to ${displayAgentName(selectedAgent)} agent.`);
+          document.getElementById('agent-pill').textContent = `Agent: ${displayAgentName(selectedAgent)}`;
+          if (selectedAgent === 'contest') {
+            addMsg('bot', '🏆 Contest Help mode.\n\nI can:\n• Show specific problems — "Euclid 2023 Q5"\n• Explain solutions step by step\n• Find practice problems — "geometry practice grade 10"\n• Answer concept questions — "what is modular arithmetic?"\n• List available contests', 'contest');
+            loadContestStatus();
+          } else {
+            addMsg('bot', `Switched to ${displayAgentName(selectedAgent)} agent.`);
+            document.getElementById('contest-panel').style.display = 'none';
+          }
         });
       });
-      inputEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } });
 
       // Example prompt buttons
       document.getElementById('ex1').addEventListener('click', ()=>{ inputEl.value='I need help with calculus'; send(); });
       document.getElementById('ex2').addEventListener('click', ()=>{ inputEl.value='Find a physics tutor'; send(); });
       document.getElementById('ex3').addEventListener('click', ()=>{ inputEl.value='Show all mentors'; send(); });
 
-      function el(tag,cls,txt){const d=document.createElement(tag); if(cls) d.className=cls; if(txt) d.textContent=txt; return d}
+      inputEl.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+      document.getElementById('send').onclick = send;
 
-      function add(role, text){
-        const wrap = el('div','msg '+role);
-        const avatar = el('div','avatar '+role, role==='user'?'Y': 'B');
-        const bubble = el('div','bubble', text);
-        wrap.appendChild(role==='user'? bubble : avatar);
-        wrap.appendChild(role==='user'? avatar : bubble);
+      // ── Message rendering ───────────────────────────────────────────────────
+      function addMsg(role, text, avatarType) {
+        const wrap = document.createElement('div');
+        wrap.className = 'msg ' + role;
+        const av = document.createElement('div');
+        av.className = 'avatar ' + (avatarType || role);
+        av.textContent = role === 'user' ? 'Y' : (avatarType === 'contest' ? '🏆' : 'B');
+        const bub = document.createElement('div');
+        bub.className = 'bubble';
+        bub.innerHTML = escHtml(text)
+          .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+          .replace(/\n/g, '<br>');
+        wrap.appendChild(role === 'user' ? bub : av);
+        wrap.appendChild(role === 'user' ? av : bub);
         messagesEl.appendChild(wrap);
         messagesEl.scrollTop = messagesEl.scrollHeight;
       }
 
-      function renderMatches(matches){
-        if (!matches || !matches.length){
-          resultsPanel.style.display = 'none';
-          matchListEl.innerHTML = '';
+      function escHtml(s) {
+        return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+
+      // ── Mentor match rendering ──────────────────────────────────────────────
+      function renderMatches(matches) {
+        const panel = document.getElementById('results-panel');
+        const list = document.getElementById('match-list');
+        if (!matches || !matches.length) { panel.style.display = 'none'; return; }
+        panel.style.display = 'block';
+        list.innerHTML = matches.map((m, i) => `
+          <div class="match-card">
+            <div class="match-top">
+              <div class="match-rank">#${i+1}</div>
+              <div class="match-score">${Math.round((m.match_score||0)*100)}%</div>
+            </div>
+            <div class="match-name">${escHtml(m.name)}</div>
+            <div class="match-meta">Grade ${m.grade} · ${escHtml(m.subject)} · ${escHtml(m.qualifications||'—')}</div>
+            <div class="match-expl">${escHtml(m.explanation||'')}</div>
+          </div>`).join('');
+      }
+
+      // ── Contest problem rendering (PDF page images) ─────────────────────────
+      function renderProblems(problems) {
+        lastProblems = problems || [];
+        const panel = document.getElementById('contest-panel');
+        const list = document.getElementById('problem-list');
+        document.getElementById('contest-chips-wrap').style.display = 'none';
+        if (!problems || !problems.length) { panel.style.display = 'none'; return; }
+        panel.style.display = 'block';
+
+        list.innerHTML = problems.slice(0, 4).map((p, i) => {
+          const probLabel = p.problem_number ? `Problem ${p.problem_number}${p.part ? ' Part '+p.part : ''}` : 'Problem';
+          const topicChips = (p.topics||[]).map(t =>
+            `<span class="topic-chip">${t.replace('_',' ')}</span>`).join('');
+          const diagramBadge = p.has_diagram ? '<span class="diagram-badge">📐 diagram</span>' : '';
+
+          return `
+            <div class="problem-card" id="pcard-${i}">
+              <div class="problem-card-header">
+                <div class="problem-title">${escHtml(p.contest)} ${p.year} — ${probLabel}</div>
+                <div class="topic-chips">${topicChips}${diagramBadge}</div>
+              </div>
+              <div class="problem-image-wrap" id="pimg-${i}">
+                <div class="problem-loading">Loading problem...</div>
+              </div>
+              <div class="problem-actions">
+                ${p.has_solution ? `<button class="prob-btn solution" id="sol-btn-${i}" onclick="toggleSolution(${i})">Show solution</button>` : ''}
+                ${i > 0 ? '' : ''}
+              </div>
+            </div>`;
+        }).join('');
+
+        // Load each problem image
+        problems.slice(0, 4).forEach((p, i) => loadProblemImage(p, i, false));
+      }
+
+      async function loadProblemImage(problem, index, showSolution) {
+        const wrap = document.getElementById(`pimg-${index}`);
+        if (!wrap) return;
+
+        if (!problem.pdf_path) {
+          wrap.innerHTML = `<div class="problem-error">⚠ PDF path not indexed. Re-run ingestion to enable image display.</div>`;
           return;
         }
-        resultsPanel.style.display = 'block';
-        matchListEl.innerHTML = matches.map((match, index) => {
-          const score = Math.round((match.match_score || 0) * 100);
-          return `
-            <div class="match-card">
-              <div class="match-top">
-                <div class="match-rank">#${index + 1}</div>
-                <div class="match-score">${score}%</div>
-              </div>
-              <div class="match-name">${match.name}</div>
-              <div class="match-meta">Grade ${match.grade} - ${match.subject} - ${match.qualifications || 'No qualifications listed'}</div>
-              <div class="match-expl">${match.explanation || 'Potential match.'}</div>
-            </div>
-          `;
-        }).join('');
-      }
 
-      function updateState(data){
-        const state = data.state || 'idle';
-        const bookingState = data.booking_state || 'none';
-        statePill.textContent = `State: ${state.replace(/_/g, ' ')}`;
-        statePill.dataset.state = state;
-        bookingPill.textContent = `Booking: ${bookingState.replace(/_/g, ' ')}`;
-        bookingPill.dataset.state = bookingState;
-        bookStateEl.style.display = bookingState && bookingState !== 'none' ? 'block' : 'none';
-        bookStateEl.textContent = bookingState && bookingState !== 'none'
-          ? `Booking state: ${bookingState.replace(/_/g, ' ')}`
-          : '';
-      }
-
-      async function send(){
-        const text = inputEl.value.trim(); if(!text) return;
-        inputEl.value = '';
-        await sendMessage(text);
-      }
-
-      async function sendMessage(text){
-        add('user', text);
-        try{
-          const res = await fetch(API + '/chat', {
-            method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({session_id: SESSION, message: text, forced_agent: selectedAgent})
+        wrap.innerHTML = '<div class="problem-loading">Rendering page...</div>';
+        try {
+          const params = new URLSearchParams({
+            pdf_path: problem.pdf_path,
+            page: problem.page_number || 0,
+            scale: 2.0,
+            show_solution: showSolution,
           });
-          if(!res.ok) throw new Error('Bad response');
+          const res = await fetch(`${API}/contest/page-image?${params}`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
-          add('bot', data.reply || 'Sorry, no reply.');
+          wrap.innerHTML = `<img src="data:image/png;base64,${data.image_base64}" alt="Contest problem page" />`;
+        } catch (e) {
+          wrap.innerHTML = `<div class="problem-error">⚠ Could not load page image: ${e.message}</div>`;
+        }
+      }
+
+      // Track solution toggle state per problem
+      const solutionState = {};
+      function toggleSolution(index) {
+        const p = lastProblems[index];
+        if (!p) return;
+        solutionState[index] = !solutionState[index];
+        const btn = document.getElementById(`sol-btn-${index}`);
+        if (btn) {
+          btn.textContent = solutionState[index] ? 'Hide solution' : 'Show solution';
+          btn.classList.toggle('active', solutionState[index]);
+        }
+        loadProblemImage(p, index, solutionState[index]);
+      }
+
+      // ── Contest status on load ──────────────────────────────────────────────
+      async function loadContestStatus() {
+        try {
+          const res = await fetch(`${API}/contest/status`);
+          const data = await res.json();
+          if (data.indexed && data.contests && data.contests.length) {
+            const chips = document.getElementById('contest-chips');
+            const wrap = document.getElementById('contest-chips-wrap');
+            const suggestions = [];
+            data.contests.slice(0, 3).forEach(c => {
+              if (c.years && c.years.length)
+                suggestions.push(`Show me ${c.contest} ${c.years[0]} Q1`);
+            });
+            suggestions.push('Geometry practice problems', 'Explain a number theory solution');
+            chips.innerHTML = suggestions.map(s =>
+              `<span class="contest-chip" onclick="sendChip('${s}')">${s}</span>`).join('');
+            document.getElementById('contest-panel').style.display = 'block';
+            wrap.style.display = 'block';
+          }
+        } catch (e) { /* server not running */ }
+      }
+
+      function sendChip(text) { inputEl.value = text; send(); }
+
+      // ── State update ────────────────────────────────────────────────────────
+      function updateState(data) {
+        const state = data.state || 'idle';
+        const booking = data.booking_state || 'none';
+        const sp = document.getElementById('state-pill');
+        sp.textContent = `State: ${state.replace(/_/g,' ')}`;
+        sp.dataset.state = state;
+        document.getElementById('booking-pill').textContent = `Booking: ${booking.replace(/_/g,' ')}`;
+        const bs = document.getElementById('book-state');
+        bs.style.display = booking && booking !== 'none' ? 'block' : 'none';
+        bs.textContent = booking !== 'none' ? `Booking: ${booking.replace(/_/g,' ')}` : '';
+      }
+
+      // ── Send ────────────────────────────────────────────────────────────────
+      async function send() {
+        const text = inputEl.value.trim();
+        if (!text) return;
+        inputEl.value = '';
+        addMsg('user', text);
+
+        if (selectedAgent === 'contest') {
+          await sendContest(text);
+        } else {
+          await sendChat(text);
+        }
+      }
+
+      async function sendChat(text) {
+        document.getElementById('contest-panel').style.display = 'none';
+        try {
+          const res = await fetch(`${API}/chat`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({session_id: SESSION, message: text, forced_agent: selectedAgent}),
+          });
+          const data = await res.json();
+          addMsg('bot', data.reply || 'No reply.');
           updateState(data);
           renderMatches(data.matches);
-        }catch(e){
-          add('bot', 'Could not reach backend. Is it running at http://localhost:8000 ?');
+        } catch (e) {
+          addMsg('bot', 'Could not reach backend. Is it running at http://localhost:8000?');
+        }
+      }
+
+      async function sendContest(text) {
+        document.getElementById('results-panel').style.display = 'none';
+        try {
+          const res = await fetch(`${API}/contest/ask`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({message: text, session_id: SESSION}),
+          });
+          const data = await res.json();
+          addMsg('bot', data.reply || 'No reply.', 'contest');
+          if (data.problems && data.problems.length) {
+            renderProblems(data.problems);
+          }
+        } catch (e) {
+          addMsg('bot', 'Could not reach backend. Is it running at http://localhost:8000?', 'contest');
         }
       }
     </script>
