@@ -64,13 +64,22 @@
 
       <div class="quick-actions">
         <button type="button" class="quick-action active" data-agent="general">General Agent</button>
-        <button type="button" class="quick-action" data-agent="match">Match / Booking Agent</button>
+        <button type="button" class="quick-action" data-agent="match">Match Agent</button>
       </div>
 
       <div class="status-row" id="status-row">
-        <span class="status-pill" id="agent-pill">Agent: general</span>
+        <span class="status-pill" id="agent-pill">Agent: General</span>
         <span class="status-pill" data-state="idle" id="state-pill">State: idle</span>
         <span class="status-pill" id="booking-pill">Booking: none</span>
+      </div>
+
+      <div class="panel" id="suggestions" style="margin-top:8px">
+        <h2>Try these</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="example-btn" id="ex1">I need help with calculus</button>
+          <button class="example-btn" id="ex2">Find a physics tutor</button>
+          <button class="example-btn" id="ex3">Show all mentors</button>
+        </div>
       </div>
 
       <div id="messages" aria-live="polite"></div>
@@ -101,17 +110,23 @@
       const bookStateEl = document.getElementById('book-state');
       const inputEl = document.getElementById('input');
       let selectedAgent = 'general';
+      function displayAgentName(a){ return a === 'general' ? 'General' : a === 'match' ? 'Match' : a }
       document.getElementById('send').onclick = send;
-      document.querySelectorAll('.quick-action').forEach((button) => {
+      document.querySelectorAll('.quick-actions .quick-action').forEach((button) => {
         button.addEventListener('click', () => {
           selectedAgent = button.dataset.agent || 'general';
           document.querySelectorAll('.quick-action').forEach((item) => item.classList.remove('active'));
           button.classList.add('active');
-          agentPill.textContent = `Agent: ${selectedAgent}`;
-          add('bot', `Switched to ${selectedAgent} agent.`);
+          agentPill.textContent = `Agent: ${displayAgentName(selectedAgent)}`;
+          add('bot', `Switched to ${displayAgentName(selectedAgent)} agent.`);
         });
       });
       inputEl.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } });
+
+      // Example prompt buttons
+      document.getElementById('ex1').addEventListener('click', ()=>{ inputEl.value='I need help with calculus'; send(); });
+      document.getElementById('ex2').addEventListener('click', ()=>{ inputEl.value='Find a physics tutor'; send(); });
+      document.getElementById('ex3').addEventListener('click', ()=>{ inputEl.value='Show all mentors'; send(); });
 
       function el(tag,cls,txt){const d=document.createElement(tag); if(cls) d.className=cls; if(txt) d.textContent=txt; return d}
 

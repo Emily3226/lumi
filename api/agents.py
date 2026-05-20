@@ -70,28 +70,56 @@ def is_list_request(text: str) -> bool:
 
 FAQ_ENTRIES: list[tuple[re.Pattern[str], str]] = [
     (
-        re.compile(r"\bhow (?:does|do) .*match|\bhow does matching work\b|\bhow are mentors matched\b", re.I),
+        re.compile(r"how.*match|matching.*work|mentor.*match", re.I),
         "I rank mentors in two stages: RAG finds the most relevant mentors for your freeform request, then the matcher rescoring picks the best fit.",
     ),
     (
-        re.compile(r"\bwhat can you do\b|\bhelp\b|\bcommands\b|\bhow do you work\b", re.I),
+        re.compile(r"what can you do|what.*help|commands|how.*work", re.I),
         "I can find mentors from freeform text, list available mentors, explain matches, and book a pairing.",
     ),
     (
-        re.compile(r"\bwhat subjects\b|\bwhich subjects\b|\bsupported subjects\b", re.I),
+        re.compile(r"what.*subjects|which.*subjects|supported.*subject", re.I),
         "Supported subjects include math, physics, chemistry, biology, and english, but freeform requests like 'calculus help' or 'essay writing' also work.",
     ),
     (
-        re.compile(r"\bwhat grade|grade levels|\bgrades\b", re.I),
+        re.compile(r"what.*grade|grade.*level|grade.*range", re.I),
         "The system is tuned for grades 9 through 12.",
     ),
     (
-        re.compile(r"\bhow do i book\b|\bbooking\b|\breserve\b|\bconfirm pairing\b", re.I),
-        "After I show matches, type 'book 1', 'book 2', or 'book 3'. I may ask for the mentee's name before saving the booking.",
+        re.compile(r"how.*book|booking.*steps|book.*process", re.I),
+        "To book: 1) Ask for matches (e.g. 'I need help with calculus'), 2) Type 'book 1' for the top result, 3) Provide the mentee's name if asked.",
     ),
     (
-        re.compile(r"\brestart\b|\bstart over\b|\bnew conversation\b", re.I),
-        "Type restart any time and I’ll clear the current match and booking flow.",
+        re.compile(r"cost|price|free|paid|subscription|charge|fee", re.I),
+        "This demo does not charge; in production, pricing would be shown on the booking confirmation page. Check with your organization for costs.",
+    ),
+    (
+        re.compile(r"(how long|duration|length).*session|session.*(long|duration|length)|minutes|hours", re.I),
+        "Sessions are typically 30-60 minutes. You can agree on exact timing with the mentor after booking.",
+    ),
+    (
+        re.compile(r"language|languages|speak|speaks", re.I),
+        "Mentors may list their languages in their profile. Try asking 'Show all mentors' and check the profile text for language details.",
+    ),
+    (
+        re.compile(r"cancel|change|reschedule|modify.*booking|remove.*booking", re.I),
+        "To change or cancel a booking, contact your administrator or use the booking management page. I can show past bookings with /history.",
+    ),
+    (
+        re.compile(r"privacy|data|where.*data|secure", re.I),
+        "This demo stores bookings in a local SQLite DB. In production, we recommend clear privacy notices and secure storage. Ask an admin for full details.",
+    ),
+    (
+        re.compile(r"support|helpdesk|contact.*support|report.*issue", re.I),
+        "For support, contact your project administrator. This demo does not include a hosted support system.",
+    ),
+    (
+        re.compile(r"restart|start over|new conversation|clear|reset", re.I),
+        "Type restart any time and I'll clear the current match and booking flow.",
+    ),
+    (
+        re.compile(r"example|examples|sample|how do i ask", re.I),
+        "Try asking: 'I need help with calculus', 'Find me a math tutor', or 'Book 1' after I show matches.",
     ),
 ]
 
@@ -167,6 +195,9 @@ class MentorTaskAgents:
             return "search"
         if is_restart_request(message):
             return "general"
+        # If user asks "how do I book" or similar, treat it as a general question, not an actionable booking command
+        if re.search(r"\bhow\b", message, re.I) and re.search(r"\bbook\b", message, re.I):
+            return "general"
         if is_help_request(message) or is_list_request(message):
             return "general"
         if is_booking_request(message, session):
@@ -231,6 +262,29 @@ class MentorTaskAgents:
 
         if not tokens:
             return "Ask me anything - I can help with mentor matching, general questions, or just chat."
+
+        # If the user message is very short and not recognized, prompt for clarification with examples
+        if len(tokens) < 3:
+            return (
+                "Could you say a bit more about what the mentee needs? "
+                "Try: 'I need help with calculus', 'Find a physics tutor', or 'Show all mentors'."
+            )
+
+        # Direct answers for common operational questions — check these BEFORE generic catch-alls
+        if _contains_any(tokens, {"cost", "price", "free", "paid", "subscription"}):
+            return "This demo does not charge; in production, pricing would be shown during booking or on a payments page."
+
+        if _contains_any(tokens, {"length", "duration", "long"}) and _contains_any(tokens, {"session", "sessions", "tutor", "mentor"}):
+            return "Sessions are usually 30–60 minutes; confirm exact duration with the mentor when booking."
+
+        if _contains_any(tokens, {"cancel", "reschedule", "change", "modify"}) and _contains_any(tokens, {"booking", "reservation", "appointment"}):
+            return "To change or cancel a booking, use the admin tools or contact support. This demo surface shows bookings via the /history endpoint."
+
+        if _contains_any(tokens, {"privacy", "data", "store", "stored"}):
+            return "Bookings are stored in a local SQLite DB for this demo. For production, use secure storage and a privacy policy."
+
+        if _contains_any(tokens, {"support", "helpdesk", "contact"}):
+            return "Contact your project admin for support; this demo doesn't include a hosted support channel."
 
         if _contains_any(tokens, {"day", "date", "today"}):
             day_name = datetime.now().strftime("%A")
@@ -350,9 +404,6 @@ class MentorTaskAgents:
 
         if _contains_any(tokens, {"question", "ask", "confused", "stuck", "help"}) and len(tokens) >= 3:
             return "What's your question? I can help with mentor matching, or if it's about school subjects, I can point you in the right direction or find a tutor."
-
-        if len(normalized) > 5 and _contains_any(tokens, {"what", "how", "why", "when", "where"}):
-            return "That's a great question! I'm specialized in mentor matching and general study help, but I can try to point you in the right direction. What would help most?"
 
         return None
 
