@@ -34,6 +34,7 @@ class ContestResult:
     reply: str
     problems: list[dict] | None = None
     intent: str = "general"
+    active_agent: str | None = None
 
 
 # ── Intent detection ──────────────────────────────────────────────────────────
@@ -113,6 +114,25 @@ def _extract_grade(text: str) -> int | None:
     m = _GRADE_RE.search(text)
     if m:
         return int(m.group(1) or m.group(3))
+    return None
+
+
+def _is_agent_switch_request(text: str) -> bool:
+    n = _norm(text)
+    return bool(
+        re.search(r"\bswitch\b|\bchange\b|\bgo to\b|\bopen\b|\buse\b", n)
+        and re.search(r"\bgeneral\b|\bmatch\b|\bcontest\b", n)
+    )
+
+
+def _target_agent(text: str) -> str | None:
+    n = _norm(text)
+    if re.search(r"\bgeneral\b", n):
+        return "general"
+    if re.search(r"\bmatch\b", n):
+        return "match"
+    if re.search(r"\bcontest\b", n):
+        return "contest"
     return None
 
 
@@ -494,6 +514,26 @@ class ContestAgent:
     """Drop-in agent for Waterloo contest math knowledge."""
 
     def run(self, message: str, session: dict[str, Any] | None = None) -> ContestResult:
+        if _is_agent_switch_request(message):
+            target = _target_agent(message)
+            if target:
+                if target == "general":
+                    reply = (
+                        "Switched to the General agent.\n\n"
+                        "You can ask general questions from the knowledge file or switch again anytime."
+                    )
+                elif target == "match":
+                    reply = (
+                        "Switched to the Match agent.\n\n"
+                        "Send a subject or skill request like 'I need help with calculus' to find mentors."
+                    )
+                else:
+                    reply = (
+                        "You are already in the Contest agent.\n\n"
+                        "Ask for a specific problem, explanation, or practice set."
+                    )
+                return ContestResult(reply=reply, intent="switch", active_agent=target)
+
         if collection_count() == 0:
             # Still allow concept questions even without indexed data
             intent = detect_intent(message)

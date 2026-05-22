@@ -161,20 +161,30 @@
       let lastProblems = [];
       function displayAgentName(a){ return a === 'general' ? 'General' : a === 'match' ? 'Match' : a === 'contest' ? 'Contest' : a }
 
+      function applySelectedAgent(agent, announce = false) {
+        selectedAgent = agent || 'general';
+        document.querySelectorAll('.quick-action').forEach((item) => item.classList.toggle('active', item.dataset.agent === selectedAgent));
+        document.getElementById('agent-pill').textContent = `Agent: ${displayAgentName(selectedAgent)}`;
+        if (selectedAgent !== 'match') {
+          document.getElementById('results-panel').style.display = 'none';
+        }
+        if (selectedAgent === 'contest') {
+          if (announce) {
+            addMsg('bot', '🏆 Contest Help mode.\n\nI can:\n• Show specific problems — "Euclid 2023 Q5"\n• Explain solutions step by step\n• Find practice problems — "geometry practice grade 10"\n• Answer concept questions — "what is modular arithmetic?"\n• List available contests', 'contest');
+          }
+          loadContestStatus();
+        } else {
+          if (announce) {
+            addMsg('bot', `Switched to ${displayAgentName(selectedAgent)} agent.`);
+          }
+          document.getElementById('contest-panel').style.display = 'none';
+        }
+      }
+
       // ── Agent switching ─────────────────────────────────────────────────────
       document.querySelectorAll('.quick-actions .quick-action').forEach((button) => {
         button.addEventListener('click', () => {
-          selectedAgent = button.dataset.agent || 'general';
-          document.querySelectorAll('.quick-action').forEach((item) => item.classList.remove('active'));
-          button.classList.add('active');
-          document.getElementById('agent-pill').textContent = `Agent: ${displayAgentName(selectedAgent)}`;
-          if (selectedAgent === 'contest') {
-            addMsg('bot', '🏆 Contest Help mode.\n\nI can:\n• Show specific problems — "Euclid 2023 Q5"\n• Explain solutions step by step\n• Find practice problems — "geometry practice grade 10"\n• Answer concept questions — "what is modular arithmetic?"\n• List available contests', 'contest');
-            loadContestStatus();
-          } else {
-            addMsg('bot', `Switched to ${displayAgentName(selectedAgent)} agent.`);
-            document.getElementById('contest-panel').style.display = 'none';
-          }
+          applySelectedAgent(button.dataset.agent || 'general', true);
         });
       });
 
@@ -361,6 +371,9 @@
           });
           const data = await res.json();
           addMsg('bot', data.reply || 'No reply.');
+          if (data.active_agent && data.active_agent !== selectedAgent) {
+            applySelectedAgent(data.active_agent, false);
+          }
           updateState(data);
           renderMatches(data.matches);
         } catch (e) {
@@ -377,6 +390,9 @@
           });
           const data = await res.json();
           addMsg('bot', data.reply || 'No reply.', 'contest');
+          if (data.active_agent && data.active_agent !== selectedAgent) {
+            applySelectedAgent(data.active_agent, false);
+          }
           if (data.problems && data.problems.length) {
             renderProblems(data.problems);
           }

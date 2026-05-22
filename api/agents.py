@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 import re
 from typing import Any
 
@@ -13,12 +14,16 @@ from api.services import book_pairing_in_db, list_available_mentors, match_mento
 from rag.subject_utils import subject_key
 
 
+GENERAL_KNOWLEDGE_PATH = Path(__file__).resolve().parents[1] / "data" / "general_knowledge.md"
+
+
 @dataclass
 class AgentResult:
     reply: str
     state: str
     matches: list[dict] | None = None
     booking_state: str | None = None
+    active_agent: str | None = None
 
 
 def _normalize(text: str) -> str:
@@ -66,6 +71,25 @@ def is_restart_request(text: str) -> bool:
 def is_list_request(text: str) -> bool:
     t = _normalize(text)
     return bool(re.search(r"\blist\b|show all mentors|available mentors", t))
+
+
+def is_agent_switch_request(text: str) -> bool:
+    t = _normalize(text)
+    return bool(
+        re.search(r"\bswitch\b|\bchange\b|\bgo to\b|\bopen\b|\buse\b", t)
+        and re.search(r"\bgeneral\b|\bmatch\b|\bcontest\b", t)
+    )
+
+
+def _target_agent(text: str) -> str | None:
+    t = _normalize(text)
+    if re.search(r"\bcontest\b", t):
+        return "contest"
+    if re.search(r"\bmatch\b", t):
+        return "match"
+    if re.search(r"\bgeneral\b", t):
+        return "general"
+    return None
 
 
 FAQ_ENTRIES: list[tuple[re.Pattern[str], str]] = [
@@ -134,7 +158,7 @@ def is_booking_request(text: str, session: dict[str, Any]) -> bool:
 def is_match_request(text: str) -> bool:
     t = _normalize(text)
     return bool(
-        re.search(r"\bfind\b.*\bmentor\b|\bmatch\b|\bpair\b", t)
+        re.search(r"\bfind\b.*\bmentor\b|\bmake\b.*\bmatch\b|\bmatch\b|\bpair\b", t)
         or re.search(r"\bneed help with\b|\blooking for\b.*\bmentor\b|\btutor\b", t)
     )
 
@@ -175,6 +199,79 @@ MATCH_QUERY_HINT_WORDS = {
 }
 
 
+def _load_general_knowledge_entries() -> list[dict[str, str]]:
+    if not GENERAL_KNOWLEDGE_PATH.exists():
+        return []
+
+    try:
+        content = GENERAL_KNOWLEDGE_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        return []
+
+    if not content:
+        return []
+
+    entries: list[dict[str, str]] = []
+    for block in re.split(r"\n\s*\n+", content):
+        lines = [line.rstrip() for line in block.splitlines() if line.strip()]
+        if not lines:
+            continue
+
+        has_structured_answer = any(line.lower().startswith(("a:", "answer:")) for line in lines)
+        if has_structured_answer:
+            prompt_lines: list[str] = []
+            answer_lines: list[str] = []
+            reading_answer = False
+            for line in lines:
+                lower = line.lower()
+                if lower.startswith(("q:", "question:")):
+                    prompt_lines.append(line.split(":", 1)[1].strip())
+                    reading_answer = False
+                elif lower.startswith(("a:", "answer:")):
+                    answer_lines.append(line.split(":", 1)[1].strip())
+                    reading_answer = True
+                elif reading_answer:
+                    answer_lines.append(line.strip())
+                else:
+                    prompt_lines.append(line.strip())
+
+            answer = " ".join(answer_lines).strip()
+            content_text = " ".join(prompt_lines).strip() or answer
+            if answer:
+                entries.append({"content": content_text, "answer": answer})
+            continue
+
+        text = " ".join(lines).strip()
+        if text:
+            entries.append({"content": text, "answer": text})
+
+    return entries
+
+
+def _score_general_knowledge(message: str, text: str) -> int:
+    normalized_message = _normalize(message)
+    normalized_text = _normalize(text)
+    if not normalized_message or not normalized_text:
+        return 0
+
+    score = 0
+    if normalized_message in normalized_text:
+        score += 12
+
+    message_tokens = _token_set(normalized_message)
+    text_tokens = _token_set(normalized_text)
+    score += len(message_tokens & text_tokens) * 3
+
+    words = normalized_message.split()
+    for size in (2, 3):
+        for index in range(len(words) - size + 1):
+            phrase = " ".join(words[index : index + size])
+            if phrase and phrase in normalized_text:
+                score += 4
+
+    return score
+
+
 class MentorTaskAgents:
     def __init__(self) -> None:
         self.router = RunnableBranch(
@@ -189,6 +286,8 @@ class MentorTaskAgents:
         return self.router.invoke(payload)
 
     def _intent_for(self, message: str, session: dict[str, Any], forced_agent: str | None = None) -> str:
+        if is_agent_switch_request(message):
+            return "general"
         if forced_agent == "general":
             return "general"
         if forced_agent in {"booking", "match"}:
@@ -210,26 +309,48 @@ class MentorTaskAgents:
         message = context["message"]
         session = context["session"]
 
+        if is_agent_switch_request(message):
+            target = _target_agent(message)
+            if target:
+                session["active_agent"] = target
+                if target == "contest":
+                    reply = (
+                        "Switched to the Contest agent.\n\n"
+                        "Ask me for a specific contest problem, a solution explanation, or a practice set."
+                    )
+                elif target == "match":
+                    reply = (
+                        "Switched to the Match agent.\n\n"
+                        "Send me a subject or skill request like 'I need help with calculus' and I’ll rank mentors."
+                    )
+                else:
+                    reply = (
+                        "Switched to the General agent.\n\n"
+                        "You can ask me questions from the knowledge file or request another mode anytime."
+                    )
+                return AgentResult(reply=reply, state=session.get("state", "idle"), active_agent=target)
+
         if is_restart_request(message):
             session.clear()
-            session.update({"state": "idle", "subject": None, "grade": None, "name": None, "matches": []})
+            session.update({"state": "idle", "subject": None, "grade": None, "name": None, "matches": [], "active_agent": "general"})
             return AgentResult(
                 reply=(
                     "Sure. We can start over.\n\n"
                     "Tell me what the mentee needs help with in plain language, like 'I need help with calculus'."
                 ),
                 state="idle",
+                active_agent="general",
             )
 
         if is_list_request(message):
             mentors = list_available_mentors()
             if not mentors:
-                return AgentResult(reply="No mentors are available right now.", state=session.get("state", "idle"), booking_state="no_mentors")
+                return AgentResult(reply="No mentors are available right now.", state=session.get("state", "idle"), booking_state="no_mentors", active_agent=session.get("active_agent", "general"))
             lines = ["Available mentors:"]
             for mentor in mentors:
                 status = "available" if mentor["available"] else "booked"
                 lines.append(f"- {mentor['name']} · Grade {mentor['grade']} · {mentor['subject']} · {status}")
-            return AgentResult(reply="\n".join(lines), state=session.get("state", "idle"), booking_state="mentor_list")
+            return AgentResult(reply="\n".join(lines), state=session.get("state", "idle"), booking_state="mentor_list", active_agent=session.get("active_agent", "general"))
 
         general_answer = self._answer_general_question(message, session)
         if general_answer:
@@ -237,6 +358,7 @@ class MentorTaskAgents:
                 reply=general_answer,
                 state=session.get("state", "idle"),
                 booking_state=session.get("state", "idle"),
+                active_agent=session.get("active_agent", "general"),
             )
 
         for pattern, answer in FAQ_ENTRIES:
@@ -245,6 +367,7 @@ class MentorTaskAgents:
                     reply=answer,
                     state=session.get("state", "idle"),
                     booking_state=session.get("state", "idle"),
+                    active_agent=session.get("active_agent", "general"),
                 )
 
         return AgentResult(
@@ -254,11 +377,16 @@ class MentorTaskAgents:
             ),
             state=session.get("state", "idle"),
             booking_state=session.get("state", "idle"),
+            active_agent=session.get("active_agent", "general"),
         )
 
     def _answer_general_question(self, message: str, session: dict[str, Any]) -> str | None:
         tokens = _token_set(message)
         normalized = _normalize(message)
+
+        file_answer = self._answer_from_general_knowledge(message)
+        if file_answer:
+            return file_answer
 
         if not tokens:
             return "Ask me anything - I can help with mentor matching, general questions, or just chat."
@@ -405,6 +533,23 @@ class MentorTaskAgents:
         if _contains_any(tokens, {"question", "ask", "confused", "stuck", "help"}) and len(tokens) >= 3:
             return "What's your question? I can help with mentor matching, or if it's about school subjects, I can point you in the right direction or find a tutor."
 
+        return None
+
+    def _answer_from_general_knowledge(self, message: str) -> str | None:
+        entries = _load_general_knowledge_entries()
+        if not entries:
+            return None
+
+        best_answer: str | None = None
+        best_score = 0
+        for entry in entries:
+            score = _score_general_knowledge(message, entry["content"])
+            if score > best_score:
+                best_score = score
+                best_answer = entry["answer"]
+
+        if best_score >= 6:
+            return best_answer
         return None
 
     def _search_agent(self, context: dict[str, Any]) -> AgentResult:
