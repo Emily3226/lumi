@@ -472,7 +472,6 @@ class MentorTaskAgents:
         if len(tokens) < 3:
             return None
 
-        normalized_message = _compact_text(message)
         best_answer: str | None = None
         best_score = 0
         for entry in entries:
@@ -481,12 +480,9 @@ class MentorTaskAgents:
                 best_score = score
                 best_answer = entry["answer"]
 
-        if best_answer and any(
-            normalized_message == _compact_text(entry["content"])
-            or normalized_message in _compact_text(entry["content"])
-            or _compact_text(entry["content"]) in normalized_message
-            for entry in entries
-        ):
+        # Return the best match when the overlap is strong enough to be a likely KB hit.
+        # This lets paraphrases like "when does this cycle start" resolve to the stored answer.
+        if best_answer and best_score >= 8:
             return best_answer
         return None
 
