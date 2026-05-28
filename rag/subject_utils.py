@@ -55,6 +55,21 @@ SUBJECT_ALIASES: dict[str, tuple[str, ...]] = {
     ),
 }
 
+# Additional keywords that don't neatly fit into aliases but indicate subjects
+SUBJECT_KEYWORDS: dict[str, str] = {
+    # math-related terms
+    "deriv": "math",
+    "derivative": "math",
+    "derivatives": "math",
+    "differentiat": "math",
+    "chain rule": "math",
+    "integral": "math",
+    "integrals": "math",
+    "limit": "math",
+    "limits": "math",
+    "calculus": "math",
+}
+
 
 def _normalize_text(value: str | None) -> str:
     return " ".join((value or "").strip().lower().split())
@@ -73,6 +88,10 @@ def subject_key(value: str | None) -> Optional[str]:
         for alias in aliases:
             if alias in haystack:
                 return key
+    # Check keyword map for smaller tokens or stems
+    for kw, k in SUBJECT_KEYWORDS.items():
+        if kw in haystack:
+            return k
     return None
 
 

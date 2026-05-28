@@ -13,6 +13,7 @@ from models.inference import score_candidates
 from rag.retriever import MentorRetriever
 from rag.langchain_matcher import rank_candidates_langchain
 from rag.subject_utils import expand_query_text, subject_key
+from models.inference import trained_model_available
 
 
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
@@ -119,7 +120,8 @@ def match_mentors(
     query = expand_query_text(query_text)
     subject_hint = subject_key(query_text)
 
-    candidates = retriever.retrieve(query, grade_value, top_k=top_k)
+    # Increase retriever recall to give rerankers more options
+    candidates = retriever.retrieve(query, grade_value, top_k=max(top_k * 3, 10))
     mentee = {
         "name": mentee_name,
         "grade": grade_value,
@@ -133,15 +135,68 @@ def match_mentors(
         langchain_ranked = rank_candidates_langchain(mentee, candidates, top_k=top_k)
     except Exception:
         langchain_ranked = None
-
     if langchain_ranked:
         logger.info("Using LangChain reranker for query: %s", query_text)
         # Even when LangChain produces an initial ranking, use the trained model
         # to compute final match scores so the trained program remains authoritative.
-        ranked = score_candidates(mentee, langchain_ranked, strict=False)
+        strict = trained_model_available()
+        ranked = score_candidates(mentee, langchain_ranked, strict=strict)
     else:
-        ranked = score_candidates(mentee, candidates, strict=False)
+        strict = trained_model_available()
+        ranked = score_candidates(mentee, candidates, strict=strict)
+
+    # If the mentee provided a subject hint, ensure subject-matching mentors are prioritized
+    if subject_hint:
+        def _subject_priority(item):
+            try:
+                from rag.subject_utils import subject_matches as _sm
+
+                return (0 if _sm(item.get("subject"), subject_hint) else 1, -item.get("match_score", 0.0))
+            except Exception:
+                return (1, -item.get("match_score", 0.0))
+
+        ranked.sort(key=_subject_priority)
+
     return mentee, ranked
+
+
+def match_mentors_debug(
+    mentee_name: str,
+    query_text: str,
+    mentee_grade: int | None = None,
+    top_k: int = 5,
+) -> dict:
+    """Return detailed matching info for debugging and A/B comparisons.
+
+    Returns a dict with keys: mentee, matches, raw_candidates, langchain_used, trained_model_loaded
+    """
+    grade_value = int(mentee_grade or 0)
+    query = expand_query_text(query_text)
+    subject_hint = subject_key(query_text)
+
+    # Pull more candidates to allow reranking
+    raw_candidates = retriever.retrieve(query, grade_value, top_k=max(top_k * 4, 20))
+
+    langchain_ranked = None
+    try:
+        langchain_ranked = rank_candidates_langchain({"name": mentee_name, "grade": grade_value, "subject": subject_hint or query_text}, raw_candidates, top_k=top_k)
+    except Exception:
+        langchain_ranked = None
+
+    langchain_used = bool(langchain_ranked)
+    used_candidates = langchain_ranked if langchain_ranked else raw_candidates
+
+    strict = trained_model_available()
+    mentee_obj = {"name": mentee_name, "grade": grade_value, "subject": subject_hint or query_text, "subject_hint": subject_hint}
+    final_ranked = score_candidates(mentee_obj, used_candidates, strict=strict)
+
+    return {
+        "mentee": {"name": mentee_name, "grade": grade_value, "subject": subject_hint or query_text, "subject_hint": subject_hint},
+        "matches": final_ranked,
+        "raw_candidates": raw_candidates,
+        "langchain_used": langchain_used,
+        "trained_model_loaded": strict,
+    }
 
 
 def book_pairing_in_db(

@@ -21,6 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+# dev reload marker
 
 from api.admin import router as admin_router
 from api.chat import router as chat_router
@@ -63,7 +64,7 @@ class BookingRequest(BaseModel):
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 @app.post("/match")
-def match_mentee(req: MenteeRequest):
+def match_mentee(req: MenteeRequest, debug: bool = False):
     """
     Full pipeline:
       1. RAG retrieves top mentor candidates by semantic similarity
@@ -71,6 +72,14 @@ def match_mentee(req: MenteeRequest):
       3. Returns ranked matches with explanations
     """
     query_text = req.mentee_query or req.mentee_subject
+    if debug:
+        from api.services import match_mentors_debug
+
+        result = match_mentors_debug(req.mentee_name, query_text, req.mentee_grade, top_k=5)
+        if not result.get("matches"):
+            raise HTTPException(status_code=404, detail="No mentor candidates found")
+        return result
+
     mentee, ranked = match_mentors(req.mentee_name, query_text, req.mentee_grade, top_k=5)
     if not ranked:
         raise HTTPException(status_code=404, detail="No mentor candidates found")
