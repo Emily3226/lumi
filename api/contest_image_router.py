@@ -25,6 +25,9 @@ from fastapi.responses import Response
 
 router = APIRouter()
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_CONTEST_ROOT = _REPO_ROOT / "contests"
+
 # Safety: only serve files from within these allowed roots
 # (populated from the pdf_path values stored during ingestion)
 _ALLOWED_EXTENSIONS = {".pdf"}
@@ -48,6 +51,25 @@ def _is_safe_path(pdf_path: str) -> bool:
     return True
 
 
+def _resolve_local_pdf_path(pdf_path: str) -> str | None:
+    """Map stale absolute paths from older workspaces to the current repo's contests folder."""
+    p = Path(pdf_path)
+    if p.exists() and _is_safe_path(pdf_path):
+        return str(p)
+
+    if p.parent.name and p.name:
+        candidate = _CONTEST_ROOT / p.parent.name / p.name
+        if candidate.exists():
+            return str(candidate)
+
+    if p.name and _CONTEST_ROOT.exists():
+        for candidate in _CONTEST_ROOT.rglob(p.name):
+            if candidate.is_file():
+                return str(candidate)
+
+    return None
+
+
 @router.get("/page-image")
 def get_page_image(
     pdf_path: str = Query(..., description="Absolute path to the contest PDF"),
@@ -59,18 +81,15 @@ def get_page_image(
     Render a single PDF page as a PNG and return it as base64 JSON.
     The frontend uses this to display problems with correct formatting and diagrams.
     """
-    if not _is_safe_path(pdf_path):
+    actual_path = _resolve_local_pdf_path(pdf_path)
+    if not actual_path:
         raise HTTPException(status_code=400, detail="Invalid or inaccessible PDF path.")
 
     # If solution view requested, try to find the solution PDF alongside the contest PDF
-    actual_path = pdf_path
     if show_solution:
-        solution_path = _find_solution_pdf(pdf_path)
+        solution_path = _find_solution_pdf(actual_path)
         if solution_path:
             actual_path = solution_path
-        else:
-            # Fall back to contest PDF if solution not found
-            pass
 
     try:
         import fitz
