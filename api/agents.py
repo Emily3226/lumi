@@ -176,6 +176,14 @@ def _token_set(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9']+", _normalize(text)))
 
 
+def _is_date_or_time_question(text: str) -> bool:
+    t = _normalize(text)
+    # Match common date/time question patterns
+    return bool(
+        re.search(r"\b(today'?s date|current date|what(?:'s| is) the date|what(?:'s| is) today|what day is it|date today|day of the week|what day of the week|what day is it today|what time is it|current time|time now)\b", t)
+    )
+
+
 def _compact_text(text: str) -> str:
     return " ".join(sorted(_token_set(text)))
 
@@ -449,6 +457,12 @@ class MentorTaskAgents:
                 session["state"] = "idle"
                 return f"Switched to the {target} agent. What would you like to do next?"
 
+        # If it's a date/time question, bypass the KB and force the fallback LLM
+        if _is_date_or_time_question(message):
+            chat_answer = self._answer_from_free_chat(message, session, force_date=True)
+            if chat_answer:
+                return chat_answer
+
         file_answer = self._answer_from_general_knowledge(message)
         if file_answer:
             return file_answer
@@ -463,6 +477,8 @@ class MentorTaskAgents:
         return UNKNOWN_REQUEST_MESSAGE
 
     def _answer_from_general_knowledge(self, message: str) -> str | None:
+
+
         entries = _load_general_knowledge_entries()
         if not entries:
             return None
@@ -486,14 +502,19 @@ class MentorTaskAgents:
             return best_answer
         return None
 
-    def _answer_from_free_chat(self, message: str, session: dict[str, Any]) -> str | None:
+    def _answer_from_free_chat(self, message: str, session: dict[str, Any], force_date: bool = False) -> str | None:
+        date_context = ""
+        if force_date:
+            today = datetime.now().strftime("%B %d, %Y").replace(" 0", " ")
+            date_context = f"The current date is {today}. Use it when answering date and time questions. "
+
         prompt = (
-            "You are Lumi's general fallback agent. The app already checked the local knowledge file first. "
-            "Answer the user's question only if it is not covered there. Keep the response concise, direct, and friendly. "
-            "If the user is just greeting you with something like hi, hello, hey, or yo, reply with a brief friendly greeting and ask how you can help. "
-            "Never answer a greeting with a fact or date. Example: user says 'hi' -> assistant says 'Hello! How can I help you today?'. "
-            "Do not answer mentor-matching or contest problems unless the user explicitly asks to switch modes. "
-            "If you are not sure, say you do not know."
+            f"You are Lumi's general fallback agent. {date_context}"
+            "The local knowledge file did not contain an answer for this question."
+            " Provide a concise, helpful reply to the user's question using any recent conversation context supplied. "
+            "Do not refuse to answer; if uncertain, give a best-effort response and indicate uncertainty clearly. "
+            "Do not perform mentor-matching or contest problem solving unless the user explicitly requests switching modes. "
+            "For casual messages like greetings, respond briefly and ask how you can help."
         )
         groq_api_key = _groq_api_key()
         if not groq_api_key:
@@ -512,7 +533,7 @@ class MentorTaskAgents:
         payload = {
             "model": GROQ_MODEL,
             "messages": messages,
-            "temperature": 0.4,
+            "temperature": 0.6,
         }
 
         try:
@@ -711,7 +732,6 @@ class MentorTaskAgents:
             reply=reply,
             state="showing_results",
             matches=ranked,
-            booking_state="search_results",
             active_agent=session.get("active_agent", "general"),
         )
 
