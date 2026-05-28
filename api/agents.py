@@ -184,6 +184,12 @@ def _is_date_or_time_question(text: str) -> bool:
     )
 
 
+def _is_transformation_request(text: str) -> bool:
+    t = _normalize(text)
+    # User asks to summarize, explain, paraphrase, translate, analyze, or rewrite
+    return bool(re.search(r"\b(summariz|summarise|explain|paraphrase|translate|rewrite|shorten|lengthen|expand|condense|analy(s|ze)|summation|tl;dr)\w*\b", t))
+
+
 def _compact_text(text: str) -> str:
     return " ".join(sorted(_token_set(text)))
 
@@ -460,6 +466,13 @@ class MentorTaskAgents:
         # If it's a date/time question, bypass the KB and force the fallback LLM
         if _is_date_or_time_question(message):
             chat_answer = self._answer_from_free_chat(message, session, force_date=True)
+            if chat_answer:
+                return chat_answer
+
+        # If the user requests a transformation (summarize/explain/translate/etc.),
+        # bypass the KB and send directly to Groq for best-effort processing.
+        if _is_transformation_request(message):
+            chat_answer = self._answer_from_free_chat(message, session, force_date=False)
             if chat_answer:
                 return chat_answer
 
