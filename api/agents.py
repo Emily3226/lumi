@@ -283,16 +283,48 @@ def _score_general_knowledge(message: str, text: str) -> int:
     normalized_text = _normalize(text)
     if not normalized_message or not normalized_text:
         return 0
+    # Ignore common stopwords to avoid spurious matches from short queries
+    STOPWORDS = {
+        "the",
+        "is",
+        "a",
+        "an",
+        "in",
+        "on",
+        "for",
+        "of",
+        "to",
+        "and",
+        "or",
+        "what",
+        "how",
+        "when",
+        "where",
+        "who",
+        "which",
+        "it",
+        "this",
+        "that",
+    }
 
     score = 0
+    # exact-substring match is a strong signal
     if normalized_message in normalized_text:
         score += 12
 
     message_tokens = _token_set(normalized_message)
     text_tokens = _token_set(normalized_text)
-    score += len(message_tokens & text_tokens) * 3
 
-    words = normalized_message.split()
+    # Consider only meaningful tokens for overlap scoring
+    meaningful_msg_tokens = {t for t in message_tokens if t not in STOPWORDS}
+    meaningful_text_tokens = {t for t in text_tokens if t not in STOPWORDS}
+
+    # Require at least one meaningful token overlap to avoid stopword-only matches
+    overlap = meaningful_msg_tokens & meaningful_text_tokens
+    score += len(overlap) * 4
+
+    # Keep phrase matching for multi-word phrases (still useful)
+    words = [w for w in normalized_message.split() if w not in STOPWORDS]
     for size in (2, 3):
         for index in range(len(words) - size + 1):
             phrase = " ".join(words[index : index + size])
