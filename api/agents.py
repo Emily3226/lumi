@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+import json
+import logging
+import os
 from pathlib import Path
 import re
 from typing import Any
 
 from langchain_core.runnables import RunnableBranch, RunnableLambda
+import requests
 
 from api.services import book_pairing_in_db, list_available_mentors, match_mentors
 from rag.subject_utils import subject_key
@@ -16,8 +20,56 @@ from rag.subject_utils import subject_key
 
 GENERAL_KNOWLEDGE_PATH = Path(__file__).resolve().parents[1] / "data" / "general_knowledge.md"
 MENTOR_LIST_LIMIT = 3
+logger = logging.getLogger(__name__)
+
+
+def _load_dotenv_file() -> None:
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.exists():
+        return
+
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or line.startswith("export "):
+            if line.startswith("export "):
+                line = line[len("export "):].strip()
+            else:
+                continue
+
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+
+        current_value = os.environ.get(key, "")
+        if current_value.strip():
+            continue
+
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+
+        os.environ[key] = value
+
+
+_load_dotenv_file()
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip() or "llama-3.1-8b-instant"
 UNKNOWN_REQUEST_MESSAGE = (
     "I’m not sure how to help with that yet. Try asking for a mentor match, a contest problem, or a question from the knowledge file."
+)
+
+GROQ_NOT_CONFIGURED_MESSAGE = (
+    "I can hand off to the AI fallback, but `GROQ_API_KEY` is not set yet. Put it in the repo root `.env` file and restart the backend."
 )
 
 
@@ -99,62 +151,6 @@ def _target_agent(text: str) -> str | None:
     return None
 
 
-FAQ_ENTRIES: list[tuple[re.Pattern[str], str]] = [
-    (
-        re.compile(r"how.*match|matching.*work|mentor.*match", re.I),
-        "I rank mentors in two stages: RAG finds the most relevant mentors for your freeform request, then the matcher rescoring picks the best fit.",
-    ),
-    (
-        re.compile(r"what can you do|what.*help|commands|how.*work", re.I),
-        "I can find mentors from freeform text, list available mentors, explain matches, and book a pairing.",
-    ),
-    (
-        re.compile(r"what.*subjects|which.*subjects|supported.*subject", re.I),
-        "Supported subjects include math, physics, chemistry, biology, and english, but freeform requests like 'calculus help' or 'essay writing' also work.",
-    ),
-    (
-        re.compile(r"what.*grade|grade.*level|grade.*range", re.I),
-        "The system is tuned for grades 9 through 12.",
-    ),
-    (
-        re.compile(r"how.*book|booking.*steps|book.*process", re.I),
-        "To book: 1) Ask for matches (e.g. 'I need help with calculus'), 2) Type 'book 1' for the top result, 3) Provide the mentee's name if asked.",
-    ),
-    (
-        re.compile(r"cost|price|free|paid|subscription|charge|fee", re.I),
-        "This demo does not charge; in production, pricing would be shown on the booking confirmation page. Check with your organization for costs.",
-    ),
-    (
-        re.compile(r"(how long|duration|length).*session|session.*(long|duration|length)|minutes|hours", re.I),
-        "Sessions are typically 30-60 minutes. You can agree on exact timing with the mentor after booking.",
-    ),
-    (
-        re.compile(r"language|languages|speak|speaks", re.I),
-        "Mentors may list their languages in their profile. Try asking 'Show all mentors' and check the profile text for language details.",
-    ),
-    (
-        re.compile(r"cancel|change|reschedule|modify.*booking|remove.*booking", re.I),
-        "To change or cancel a booking, contact your administrator or use the booking management page. I can show past bookings with /history.",
-    ),
-    (
-        re.compile(r"privacy|data|where.*data|secure", re.I),
-        "This demo stores bookings in a local SQLite DB. In production, we recommend clear privacy notices and secure storage. Ask an admin for full details.",
-    ),
-    (
-        re.compile(r"support|helpdesk|contact.*support|report.*issue", re.I),
-        "For support, contact your project administrator. This demo does not include a hosted support system.",
-    ),
-    (
-        re.compile(r"restart|start over|new conversation|clear|reset", re.I),
-        "Type restart any time and I'll clear the current match and booking flow.",
-    ),
-    (
-        re.compile(r"example|examples|sample|how do i ask", re.I),
-        "Try asking: 'I need help with calculus', 'Find me a math tutor', or 'Book 1' after I show matches.",
-    ),
-]
-
-
 def is_booking_request(text: str, session: dict[str, Any]) -> bool:
     if session.get("state") == "awaiting_booking_name":
         return True
@@ -172,6 +168,10 @@ def is_match_request(text: str) -> bool:
 
 def _token_set(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9']+", _normalize(text)))
+
+
+def _compact_text(text: str) -> str:
+    return " ".join(sorted(_token_set(text)))
 
 
 def _contains_any(tokens: set[str], words: set[str]) -> bool:
@@ -224,15 +224,18 @@ def _load_general_knowledge_entries() -> list[dict[str, str]]:
         if not lines:
             continue
 
+        if len(lines) == 1 and lines[0].startswith("#"):
+            continue
+
         has_structured_answer = any(line.lower().startswith(("a:", "answer:")) for line in lines)
         if has_structured_answer:
-            prompt_lines: list[str] = []
+            question_lines: list[str] = []
             answer_lines: list[str] = []
             reading_answer = False
             for line in lines:
                 lower = line.lower()
                 if lower.startswith(("q:", "question:")):
-                    prompt_lines.append(line.split(":", 1)[1].strip())
+                    question_lines.append(line.split(":", 1)[1].strip())
                     reading_answer = False
                 elif lower.startswith(("a:", "answer:")):
                     answer_lines.append(line.split(":", 1)[1].strip())
@@ -240,12 +243,12 @@ def _load_general_knowledge_entries() -> list[dict[str, str]]:
                 elif reading_answer:
                     answer_lines.append(line.strip())
                 else:
-                    prompt_lines.append(line.strip())
+                    question_lines.append(line.strip())
 
             answer = " ".join(answer_lines).strip()
-            content_text = " ".join(prompt_lines).strip() or answer
+            question_text = " ".join(question_lines).strip()
             if answer:
-                entries.append({"content": content_text, "answer": answer})
+                entries.append({"content": question_text or answer, "answer": answer})
             continue
 
         text = " ".join(lines).strip()
@@ -279,6 +282,11 @@ def _score_general_knowledge(message: str, text: str) -> int:
     return score
 
 
+def _groq_api_key() -> str:
+    _load_dotenv_file()
+    return os.getenv("GROQ_API_KEY", GROQ_API_KEY).strip()
+
+
 class MentorTaskAgents:
     def __init__(self) -> None:
         self.router = RunnableBranch(
@@ -298,6 +306,8 @@ class MentorTaskAgents:
         if forced_agent == "general":
             return "general"
         if forced_agent in {"booking", "match"}:
+            return "search"
+        if session.get("active_agent") == "match":
             return "search"
         if is_restart_request(message):
             return "general"
@@ -376,15 +386,6 @@ class MentorTaskAgents:
                 active_agent=session.get("active_agent", "general"),
             )
 
-        for pattern, answer in FAQ_ENTRIES:
-            if pattern.search(message):
-                return AgentResult(
-                    reply=answer,
-                    state=session.get("state", "idle"),
-                    booking_state=session.get("state", "idle"),
-                    active_agent=session.get("active_agent", "general"),
-                )
-
         return AgentResult(
             reply=UNKNOWN_REQUEST_MESSAGE,
             state=session.get("state", "idle"),
@@ -393,162 +394,25 @@ class MentorTaskAgents:
         )
 
     def _answer_general_question(self, message: str, session: dict[str, Any]) -> str | None:
-        tokens = _token_set(message)
-        normalized = _normalize(message)
-
         file_answer = self._answer_from_general_knowledge(message)
         if file_answer:
             return file_answer
 
-        if not tokens:
-            return "Ask me anything - I can help with mentor matching, general questions, or just chat."
+        chat_answer = self._answer_from_free_chat(message, session)
+        if chat_answer:
+            return chat_answer
 
-        # If the user message is very short and not recognized, prompt for clarification with examples
-        if len(tokens) < 3:
-            return UNKNOWN_REQUEST_MESSAGE
+        if not _groq_api_key():
+            return GROQ_NOT_CONFIGURED_MESSAGE
 
-        # Direct answers for common operational questions — check these BEFORE generic catch-alls
-        if _contains_any(tokens, {"cost", "price", "free", "paid", "subscription"}):
-            return "This demo does not charge; in production, pricing would be shown during booking or on a payments page."
-
-        if _contains_any(tokens, {"length", "duration", "long"}) and _contains_any(tokens, {"session", "sessions", "tutor", "mentor"}):
-            return "Sessions are usually 30–60 minutes; confirm exact duration with the mentor when booking."
-
-        if _contains_any(tokens, {"cancel", "reschedule", "change", "modify"}) and _contains_any(tokens, {"booking", "reservation", "appointment"}):
-            return "To change or cancel a booking, use the admin tools or contact support. This demo surface shows bookings via the /history endpoint."
-
-        if _contains_any(tokens, {"privacy", "data", "store", "stored"}):
-            return "Bookings are stored in a local SQLite DB for this demo. For production, use secure storage and a privacy policy."
-
-        if _contains_any(tokens, {"support", "helpdesk", "contact"}):
-            return "Contact your project admin for support; this demo doesn't include a hosted support channel."
-
-        if _contains_any(tokens, {"day", "date", "today"}):
-            day_name = datetime.now().strftime("%A")
-            date_str = datetime.now().strftime("%B %d, %Y")
-            return f"Today is {day_name}, {date_str}."
-
-        if _contains_any(tokens, {"time"}) and _contains_any(tokens, {"what", "current", "is"}):
-            time_str = datetime.now().strftime("%I:%M %p")
-            return f"The current time is {time_str}."
-
-        if _contains_any(tokens, {"cycle", "cycles", "grading", "semester", "term", "marking"}) and _contains_any(tokens, {"end", "when", "close"}):
-            return "I don't have access to your school's calendar, but grading cycles typically end at the conclusion of each term or semester. Check with your school for specific dates."
-
-        if _contains_any(tokens, {"hi", "hello", "hey", "yo", "sup"}):
-            return "Hi! I'm here to help with mentor matching, answer questions, or just chat."
-
-        if _contains_any(tokens, {"thanks", "thank", "thx", "appreciate"}):
-            return "You're welcome!"
-
-        if _contains_any(tokens, {"how", "works", "work", "matching", "match", "algorithm", "scoring"}) and _contains_any(tokens, {"match", "matching", "mentor"}):
-            return "Matching uses two steps: RAG retrieves relevant mentor profiles from your freeform text, then a matcher rescoring ranks the best fits."
-
-        if _contains_any(tokens, {"subject", "subjects", "topic", "topics", "available"}) and _contains_any(tokens, {"what", "which", "supported", "available", "offer"}):
-            mentors = list_available_mentors()
-            subjects = sorted({str(m.get("subject") or "").strip() for m in mentors if m.get("subject")})
-            if subjects:
-                return f"Current subjects from available mentors: {', '.join(subjects)}."
-            return "Supported subjects include math, physics, chemistry, biology, and english."
-
-        if _contains_any(tokens, {"grade", "grades", "level", "levels"}) and not subject_key(normalized):
-            return "This system is tuned for grades 9 to 12."
-
-        if _contains_any(tokens, {"state", "status"}) and _contains_any(tokens, {"booking", "book"}):
-            current_state = session.get("state", "idle")
-            if current_state == "awaiting_booking_name":
-                return "Booking is waiting for a mentee name. Reply with the name to finish booking."
-            if current_state == "showing_results":
-                return "You currently have match results. Type 'book 1', 'book 2', or 'book 3' to confirm one."
-            return "No active booking flow right now. Ask me to find a mentor first."
-
-        if _contains_any(tokens, {"book", "booking", "reserve", "confirm"}):
-            return "After you get results, type 'book 1', 'book 2', or 'book 3'. If needed, I will ask for the mentee name before saving."
-
-        if _contains_any(tokens, {"cancel", "reset", "restart", "clear"}):
-            return "Type 'restart' to clear current matching and booking state."
-
-        if "top match" in normalized or "best match" in normalized:
-            matches = session.get("matches") or []
-            if matches:
-                top = matches[0]
-                pct = round(float(top.get("match_score") or 0) * 100)
-                return f"Your current top match is {top.get('name', 'Unknown')} at {pct}% for {top.get('subject', 'the selected subject')}."
-            return "I do not have match results yet. Ask me to find a mentor first."
-
-        if _contains_any(tokens, {"name"}) and _contains_any(tokens, {"what", "your", "is", "who"}):
-            return "I'm Lumi, a mentor matching assistant. I help you find the right tutor and book sessions."
-
-        if _contains_any(tokens, {"study", "tips", "advice", "help", "improve"}) and _contains_any(tokens, {"study", "learning", "grade", "score"}):
-            return "Study tips: Take breaks every 25-30 min, find a quiet space, review notes before bed, and teach the material to someone else to check understanding. A good mentor can really accelerate learning."
-
-        if _contains_any(tokens, {"motivation", "motivate", "tired", "lazy", "procrastinate", "don't", "dont"}) and len(tokens) >= 3:
-            return "Remember why you started! Breaking work into smaller chunks makes it feel less overwhelming. And having a mentor can provide accountability and personalized guidance that keeps you on track."
-
-        if _contains_any(tokens, {"math", "calculus", "algebra", "geometry"}) and _contains_any(tokens, {"definition", "what", "explain", "mean"}):
-            if "calculus" in normalized:
-                return "Calculus studies rates of change and accumulation. It has two main branches: differential calculus (derivatives/slopes) and integral calculus (areas/totals). A math mentor can make this intuitive!"
-            elif "algebra" in normalized:
-                return "Algebra uses symbols and rules to solve equations and understand relationships. The key is balancing both sides of an equation. Start with basics and build from there."
-            elif "geometry" in normalized:
-                return "Geometry studies shapes, angles, and spatial relationships. It combines visual reasoning with logical proofs. Drawing diagrams often helps unlock solutions."
-            return "Math builds on foundations step by step. Don't skip concepts - they usually connect later. A tutor can identify gaps and fill them."
-
-        if _contains_any(tokens, {"physics", "chemistry", "biology"}) and _contains_any(tokens, {"definition", "what", "explain", "hard", "difficult"}):
-            if "physics" in normalized:
-                return "Physics explains how the natural world works - motion, forces, energy, waves. Start by understanding concepts before diving into equations."
-            elif "chemistry" in normalized:
-                return "Chemistry is about how substances interact and transform. Understanding atoms, bonds, and reactions is key. Visual models and hands-on labs help a lot."
-            elif "biology" in normalized:
-                return "Biology studies living systems from cells to ecosystems. Learn the vocabulary and relationships between concepts. It all connects!"
-            return "Science subjects build on each other. Understand concepts deeply, not just memorize. A science tutor can make abstract ideas concrete."
-
-        if _contains_any(tokens, {"english", "writing", "essay", "grammar", "reading"}):
-            return "For writing: outline first, draft freely, then edit ruthlessly. For grammar: understand the rules, then break them intentionally. Reading widely improves all writing. Practice with feedback helps most."
-
-        if _contains_any(tokens, {"test", "exam", "exam", "prepare", "study"}) and _contains_any(tokens, {"prepare", "ready", "tips", "how"}):
-            return "Exam prep: review old tests/practice problems, make study guides, teach concepts aloud, get sleep before the exam, and stay calm. Mentors are great for targeted review of weak areas."
-
-        if _contains_any(tokens, {"homework", "assignment", "due", "deadline"}):
-            return "Stay organized with a calendar. Break assignments into steps with mini-deadlines. Start early so you have time for revisions. If stuck, reach out to a tutor or peer for a fresh perspective."
-
-        if _contains_any(tokens, {"sleep", "tired", "focus", "concentrate", "distracted"}):
-            return "Sleep is critical for memory and focus. Aim for 7-9 hours. If you're struggling to concentrate, take 5-10 min breaks, hydrate, and study in a quiet space. Consistency matters more than duration."
-
-        if _contains_any(tokens, {"stress", "stressed", "anxious", "anxiety", "overwhelm", "overwhelmed", "pressure", "cope"}) and len(tokens) >= 2:
-            return "Stress is normal but manageable. Break tasks down, prioritize, take breaks, and talk to someone you trust. Remember you're not alone - many students feel the same way. Consider reaching out to school counselors too."
-
-        if _contains_any(tokens, {"school", "class", "teacher", "difficult", "hard"}):
-            return "Every student struggles sometimes. The key is asking for help early. Teachers, tutors, and peers are all resources. Don't wait until the last minute to address gaps."
-
-        if _contains_any(tokens, {"joke", "funny", "laugh", "entertai"}) and _contains_any(tokens, {"joke", "funny", "me"}):
-            jokes = [
-                "Why did the student do math in the garden? Because they wanted to improve their roots.",
-                "What did the math teacher say to the student? You're a fraction of what you could be!",
-                "I tried to do chemistry homework but it was too ionic an experience.",
-                "History class is so old... it can't even remember what happened.",
-            ]
-            return jokes[len(tokens) % len(jokes)]
-
-        if _contains_any(tokens, {"cool", "awesome", "great", "good", "nice"}):
-            return "Glad you're in a good mood! That energy is great for learning. If you need help or want to find a mentor, I'm here."
-
-        if _contains_any(tokens, {"sad", "bad", "terrible", "awful", "hate"}):
-            return "Sorry to hear you're having a rough time. Remember it's temporary and gets better. Take care of yourself and reach out for support when needed. A good mentor can be encouraging too."
-
-        if _contains_any(tokens, {"love", "like", "best", "favorite", "prefer"}) and _contains_any(tokens, {"subject", "learning", "subject"}):
-            return "That's great! Finding your passion in a subject makes learning so much more enjoyable. A mentor in that area can deepen your knowledge even further."
-
-        if _contains_any(tokens, {"question", "ask", "confused", "stuck", "help"}) and len(tokens) >= 3:
-            return "What's your question? I can help with mentor matching, or if it's about school subjects, I can point you in the right direction or find a tutor."
-
-        return None
+        return UNKNOWN_REQUEST_MESSAGE
 
     def _answer_from_general_knowledge(self, message: str) -> str | None:
         entries = _load_general_knowledge_entries()
         if not entries:
             return None
 
+        normalized_message = _compact_text(message)
         best_answer: str | None = None
         best_score = 0
         for entry in entries:
@@ -557,8 +421,60 @@ class MentorTaskAgents:
                 best_score = score
                 best_answer = entry["answer"]
 
-        if best_score >= 6:
+        if best_answer and any(
+            normalized_message == _compact_text(entry["content"])
+            or normalized_message in _compact_text(entry["content"])
+            or _compact_text(entry["content"]) in normalized_message
+            for entry in entries
+        ):
             return best_answer
+        return None
+
+    def _answer_from_free_chat(self, message: str, session: dict[str, Any]) -> str | None:
+        prompt = (
+            "You are Lumi's general fallback agent. The app already checked the local knowledge file first. "
+            "Answer the user's question only if it is not covered there. Keep the response concise, direct, and friendly. "
+            "Do not answer mentor-matching or contest problems unless the user explicitly asks to switch modes. "
+            "If you are not sure, say you do not know."
+        )
+        groq_api_key = _groq_api_key()
+        if not groq_api_key:
+            return None
+
+        payload = {
+            "model": GROQ_MODEL,
+            "messages": [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": message},
+            ],
+            "temperature": 0.4,
+        }
+
+        try:
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {groq_api_key}"},
+                json=payload,
+                timeout=20,
+            )
+            response.raise_for_status()
+            data = response.json()
+        except requests.RequestException as exc:
+            logger.warning("Groq fallback request failed: %s", exc)
+            return None
+        except ValueError as exc:
+            logger.warning("Groq fallback returned invalid JSON: %s", exc)
+            return None
+
+        choices = data.get("choices") if isinstance(data, dict) else None
+        if isinstance(choices, list) and choices:
+            first_choice = choices[0]
+            if isinstance(first_choice, dict):
+                choice_message = first_choice.get("message")
+                if isinstance(choice_message, dict):
+                    content = choice_message.get("content")
+                    if content:
+                        return str(content).strip()
         return None
 
     def _search_agent(self, context: dict[str, Any]) -> AgentResult:
