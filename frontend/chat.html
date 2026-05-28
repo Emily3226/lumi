@@ -158,11 +158,13 @@
       const messagesEl = document.getElementById('messages');
       const inputEl = document.getElementById('input');
       let selectedAgent = 'general';
+      let activeChatMode = 'general';
       let lastProblems = [];
       function displayAgentName(a){ return a === 'general' ? 'General' : a === 'match' ? 'Match' : a === 'contest' ? 'Contest' : a }
 
       function applySelectedAgent(agent, announce = false) {
         selectedAgent = agent || 'general';
+        activeChatMode = selectedAgent;
         document.querySelectorAll('.quick-action').forEach((item) => item.classList.toggle('active', item.dataset.agent === selectedAgent));
         document.getElementById('agent-pill').textContent = `Agent: ${displayAgentName(selectedAgent)}`;
         if (selectedAgent !== 'match') {
@@ -222,18 +224,24 @@
       function renderMatches(matches) {
         const panel = document.getElementById('results-panel');
         const list = document.getElementById('match-list');
-        if (!matches || !matches.length) { panel.style.display = 'none'; return; }
+        const visibleMatches = (matches || []).slice(0, 3);
+        if (!visibleMatches.length) { panel.style.display = 'none'; return; }
         panel.style.display = 'block';
-        list.innerHTML = matches.map((m, i) => `
+        list.innerHTML = visibleMatches
+          .map((m, i) => {
+            const mentorGrade = m.grade ?? m.mentor_grade ?? m.mentorGrade ?? '—';
+            return `
           <div class="match-card">
             <div class="match-top">
-              <div class="match-rank">#${i+1}</div>
-              <div class="match-score">${Math.round((m.match_score||0)*100)}%</div>
+              <div class="match-rank">#${i + 1}</div>
+              <div class="match-score">${Math.round((m.match_score || 0) * 100)}%</div>
             </div>
             <div class="match-name">${escHtml(m.name)}</div>
-            <div class="match-meta">Grade ${m.grade} · ${escHtml(m.subject)} · ${escHtml(m.qualifications||'—')}</div>
-            <div class="match-expl">${escHtml(m.explanation||'')}</div>
-          </div>`).join('');
+            <div class="match-meta">Grade ${escHtml(String(mentorGrade))} · ${escHtml(m.subject)} · ${escHtml(m.qualifications || '—')}</div>
+            <div class="match-expl">${escHtml(m.explanation || '')}</div>
+          </div>`;
+          })
+          .join('');
       }
 
       // ── Contest problem rendering (PDF page images) ─────────────────────────
@@ -339,6 +347,11 @@
       function updateState(data) {
         const state = data.state || 'idle';
         const booking = data.booking_state || 'none';
+        if (state === 'awaiting_match_details' || state === 'showing_results' || state === 'awaiting_booking_name' || booking === 'needs_grade' || booking === 'needs_subject' || booking === 'needs_grade_and_subject' || booking === 'search_results' || booking === 'awaiting_name') {
+          activeChatMode = 'match';
+        } else if (data.active_agent && data.active_agent !== 'contest') {
+          activeChatMode = data.active_agent;
+        }
         const sp = document.getElementById('state-pill');
         sp.textContent = `State: ${state.replace(/_/g,' ')}`;
         sp.dataset.state = state;
@@ -365,13 +378,18 @@
       async function sendChat(text) {
         document.getElementById('contest-panel').style.display = 'none';
         try {
+          const effectiveAgent = activeChatMode === 'match' ? 'match' : selectedAgent;
           const res = await fetch(`${API}/chat`, {
             method: 'POST', headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({session_id: SESSION, message: text, forced_agent: selectedAgent}),
+            body: JSON.stringify({session_id: SESSION, message: text, forced_agent: effectiveAgent}),
           });
           const data = await res.json();
           addMsg('bot', data.reply || 'No reply.');
-          if (data.active_agent && data.active_agent !== selectedAgent) {
+          const booking = data.booking_state || 'none';
+          const matchFlowActive = data.state === 'awaiting_match_details' || data.state === 'showing_results' || data.state === 'awaiting_booking_name' || booking === 'needs_grade' || booking === 'needs_subject' || booking === 'needs_grade_and_subject' || booking === 'search_results' || booking === 'awaiting_name';
+          if (matchFlowActive && selectedAgent !== 'match') {
+            applySelectedAgent('match', false);
+          } else if (data.active_agent && data.active_agent !== selectedAgent) {
             applySelectedAgent(data.active_agent, false);
           }
           updateState(data);

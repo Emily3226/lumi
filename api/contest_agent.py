@@ -120,8 +120,11 @@ def _extract_grade(text: str) -> int | None:
 def _is_agent_switch_request(text: str) -> bool:
     n = _norm(text)
     return bool(
-        re.search(r"\bswitch\b|\bchange\b|\bgo to\b|\bopen\b|\buse\b", n)
-        and re.search(r"\bgeneral\b|\bmatch\b|\bcontest\b", n)
+        (
+            re.search(r"\bswitch\b|\bchange\b|\bgo to\b|\bopen\b|\buse\b", n)
+            and re.search(r"\bgeneral\b|\bmatch\b|\bcontest\b", n)
+        )
+        or re.search(r"\bgeneral\s+agent\b|\bmatch\s+agent\b|\bcontest\s+agent\b", n)
     )
 
 

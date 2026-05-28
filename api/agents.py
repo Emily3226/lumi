@@ -15,6 +15,10 @@ from rag.subject_utils import subject_key
 
 
 GENERAL_KNOWLEDGE_PATH = Path(__file__).resolve().parents[1] / "data" / "general_knowledge.md"
+MENTOR_LIST_LIMIT = 3
+UNKNOWN_REQUEST_MESSAGE = (
+    "I’m not sure how to help with that yet. Try asking for a mentor match, a contest problem, or a question from the knowledge file."
+)
 
 
 @dataclass
@@ -76,8 +80,11 @@ def is_list_request(text: str) -> bool:
 def is_agent_switch_request(text: str) -> bool:
     t = _normalize(text)
     return bool(
-        re.search(r"\bswitch\b|\bchange\b|\bgo to\b|\bopen\b|\buse\b", t)
-        and re.search(r"\bgeneral\b|\bmatch\b|\bcontest\b", t)
+        (
+            re.search(r"\bswitch\b|\bchange\b|\bgo to\b|\bopen\b|\buse\b", t)
+            and re.search(r"\bgeneral\b|\bmatch\b|\bcontest\b", t)
+        )
+        or re.search(r"\bgeneral\s+agent\b|\bmatch\s+agent\b|\bcontest\s+agent\b", t)
     )
 
 
@@ -303,6 +310,8 @@ class MentorTaskAgents:
             return "search"
         if is_match_request(message):
             return "search"
+        if extract_grade(message) and subject_key(message):
+            return "search"
         return "general"
 
     def _general_agent(self, context: dict[str, Any]) -> AgentResult:
@@ -321,18 +330,24 @@ class MentorTaskAgents:
                 elif target == "match":
                     reply = (
                         "Switched to the Match agent.\n\n"
-                        "Send me a subject or skill request like 'I need help with calculus' and I’ll rank mentors."
+                        "What grade is the mentee in?"
                     )
+                    session["pending_match_step"] = "grade"
                 else:
                     reply = (
                         "Switched to the General agent.\n\n"
                         "You can ask me questions from the knowledge file or request another mode anytime."
                     )
-                return AgentResult(reply=reply, state=session.get("state", "idle"), active_agent=target)
+                return AgentResult(
+                    reply=reply,
+                    state="awaiting_match_details" if target == "match" else session.get("state", "idle"),
+                    active_agent=target,
+                    booking_state="needs_grade_and_subject" if target == "match" else session.get("state", "idle"),
+                )
 
         if is_restart_request(message):
             session.clear()
-            session.update({"state": "idle", "subject": None, "grade": None, "name": None, "matches": [], "active_agent": "general"})
+            session.update({"state": "idle", "subject": None, "grade": None, "name": None, "matches": [], "active_agent": "general", "pending_match_step": None})
             return AgentResult(
                 reply=(
                     "Sure. We can start over.\n\n"
@@ -346,8 +361,8 @@ class MentorTaskAgents:
             mentors = list_available_mentors()
             if not mentors:
                 return AgentResult(reply="No mentors are available right now.", state=session.get("state", "idle"), booking_state="no_mentors", active_agent=session.get("active_agent", "general"))
-            lines = ["Available mentors:"]
-            for mentor in mentors:
+            lines = ["Top 3 suitable mentors:"]
+            for mentor in mentors[:MENTOR_LIST_LIMIT]:
                 status = "available" if mentor["available"] else "booked"
                 lines.append(f"- {mentor['name']} · Grade {mentor['grade']} · {mentor['subject']} · {status}")
             return AgentResult(reply="\n".join(lines), state=session.get("state", "idle"), booking_state="mentor_list", active_agent=session.get("active_agent", "general"))
@@ -371,12 +386,9 @@ class MentorTaskAgents:
                 )
 
         return AgentResult(
-            reply=(
-                "I can answer questions about this mentor system: matching, booking, availability, and how to use chat modes.\n\n"
-                "Try asking: 'How does matching work?', 'What subjects are available?', 'How do I book?', or 'Show all mentors'."
-            ),
+            reply=UNKNOWN_REQUEST_MESSAGE,
             state=session.get("state", "idle"),
-            booking_state=session.get("state", "idle"),
+            booking_state="unknown_request",
             active_agent=session.get("active_agent", "general"),
         )
 
@@ -393,10 +405,7 @@ class MentorTaskAgents:
 
         # If the user message is very short and not recognized, prompt for clarification with examples
         if len(tokens) < 3:
-            return (
-                "Could you say a bit more about what the mentee needs? "
-                "Try: 'I need help with calculus', 'Find a physics tutor', or 'Show all mentors'."
-            )
+            return UNKNOWN_REQUEST_MESSAGE
 
         # Direct answers for common operational questions — check these BEFORE generic catch-alls
         if _contains_any(tokens, {"cost", "price", "free", "paid", "subscription"}):
@@ -442,7 +451,7 @@ class MentorTaskAgents:
                 return f"Current subjects from available mentors: {', '.join(subjects)}."
             return "Supported subjects include math, physics, chemistry, biology, and english."
 
-        if _contains_any(tokens, {"grade", "grades", "level", "levels"}):
+        if _contains_any(tokens, {"grade", "grades", "level", "levels"}) and not subject_key(normalized):
             return "This system is tuned for grades 9 to 12."
 
         if _contains_any(tokens, {"state", "status"}) and _contains_any(tokens, {"booking", "book"}):
@@ -568,16 +577,19 @@ class MentorTaskAgents:
                 return AgentResult(reply="I lost the selected mentor. Please run the search again.", state="idle", matches=[], booking_state="booking_lost")
 
             mentor = matches[booking_choice - 1]
+            subject = session.get("subject") or mentor["subject"]
+            grade = int(session.get("grade") or 0)
             self._save_booking(session, mentor, mentee_name)
             self._reset_booking_state(session)
             return AgentResult(
                 reply=(
                     f"Booked!\n\n{mentee_name} -> {mentor['name']}\n"
-                    f"{session.get('subject') or mentor['subject']} - Grade {session.get('grade') or 0} -> Grade {mentor['grade']}"
+                    f"{subject} - Grade {grade} -> Grade {mentor['grade']}"
                 ),
                 state="idle",
                 matches=[],
                 booking_state="booked",
+                active_agent=session.get("active_agent", "general"),
             )
 
         if matches and choice:
@@ -601,38 +613,99 @@ class MentorTaskAgents:
                     booking_state="awaiting_name",
                 )
 
+            subject = session.get("subject") or mentor["subject"]
+            grade = int(session.get("grade") or 0)
             self._save_booking(session, mentor, mentee_name)
             self._reset_booking_state(session)
             return AgentResult(
                 reply=(
                     f"Booked!\n\n{mentee_name} -> {mentor['name']}\n"
-                    f"{session.get('subject') or mentor['subject']} - Grade {session.get('grade') or 0} -> Grade {mentor['grade']}"
+                    f"{subject} - Grade {grade} -> Grade {mentor['grade']}"
                 ),
                 state="idle",
                 matches=[],
                 booking_state="booked",
+                active_agent=session.get("active_agent", "general"),
             )
 
-        if not self._is_actionable_match_query(message):
+        current_grade = extract_grade(message)
+        current_subject = subject_key(message)
+        current_name = self._extract_name(message)
+        if current_grade is not None:
+            session["grade"] = current_grade
+        if current_subject:
+            session["subject"] = current_subject
+        if current_name:
+            session["name"] = current_name
+
+        grade = current_grade or session.get("grade")
+        subject = current_subject or session.get("subject") or session.get("query_text")
+
+        pending_step = session.get("pending_match_step")
+        if pending_step == "grade" and not grade:
             return AgentResult(
-                reply=(
-                    "I need a little more detail before I can match mentors.\n\n"
-                    "Tell me what the mentee needs help with, for example:\n"
-                    "- 'Grade 10 calculus limits'\n"
-                    "- 'Need help with physics kinematics'\n"
-                    "- 'Essay writing and grammar support'"
-                ),
-                state=session.get("state", "idle"),
+                reply="What grade is the mentee in?",
+                state="awaiting_match_details",
                 matches=[],
-                booking_state="needs_query",
+                booking_state="needs_grade",
+                active_agent=session.get("active_agent", "general"),
             )
 
-        grade = extract_grade(message) or session.get("grade")
-        name = session.get("name") or self._extract_name(message)
-        if name:
-            session["name"] = name
+        if pending_step == "grade" and grade and not subject:
+            session["pending_match_step"] = "subject"
+            return AgentResult(
+                reply="What subject or skill do you want help with?",
+                state="awaiting_match_details",
+                matches=[],
+                booking_state="needs_subject",
+                active_agent=session.get("active_agent", "general"),
+            )
 
-        mentee, ranked = match_mentors(name or "Mentee", message, mentee_grade=grade, top_k=5)
+        if pending_step == "subject" and not subject:
+            return AgentResult(
+                reply="What subject or skill do you want help with?",
+                state="awaiting_match_details",
+                matches=[],
+                booking_state="needs_subject",
+                active_agent=session.get("active_agent", "general"),
+            )
+
+        if not subject and not grade:
+            session["pending_match_step"] = "grade"
+            return AgentResult(
+                reply="What grade is the mentee in?",
+                state="awaiting_match_details",
+                matches=[],
+                booking_state="needs_grade",
+                active_agent=session.get("active_agent", "general"),
+            )
+
+        if not grade:
+            session["pending_match_step"] = "grade"
+            return AgentResult(
+                reply="What grade is the mentee in?",
+                state="awaiting_match_details",
+                matches=[],
+                booking_state="needs_grade",
+                active_agent=session.get("active_agent", "general"),
+            )
+
+        if not subject:
+            session["pending_match_step"] = "subject"
+            return AgentResult(
+                reply="What subject or skill do you want help with?",
+                state="awaiting_match_details",
+                matches=[],
+                booking_state="needs_subject",
+                active_agent=session.get("active_agent", "general"),
+            )
+
+        session["pending_match_step"] = None
+
+        name = session.get("name") or current_name
+
+        mentee, ranked = match_mentors(name or "Mentee", message, mentee_grade=grade, top_k=3)
+        ranked = ranked[:3]
         session["matches"] = ranked
         session["grade"] = mentee["grade"] or session.get("grade")
         session["subject"] = mentee.get("subject_hint") or mentee.get("subject")
@@ -645,20 +718,21 @@ class MentorTaskAgents:
                 state="idle",
                 matches=[],
                 booking_state="search_failed",
+                active_agent=session.get("active_agent", "general"),
             )
 
-        lines = ["Here are the top matches:"]
-        for index, mentor in enumerate(ranked[:3], 1):
-            pct = round(mentor["match_score"] * 100)
-            bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
-            lines.append(
-                f"{index}. {mentor['name']} [{bar}] {pct}%\n"
-                f"   Grade {mentor['grade']} - {mentor['subject']} - {mentor['qualifications']}\n"
-                f"   {mentor['explanation']}"
-            )
-
-        lines.append("\nType 'book 1', 'book 2', or 'book 3' to confirm a pairing.")
-        return AgentResult(reply="\n".join(lines), state="showing_results", matches=ranked, booking_state="search_results")
+        top_count = min(3, len(ranked))
+        reply = (
+            f"I found {top_count} match{'es' if top_count != 1 else ''}. "
+            "The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
+        )
+        return AgentResult(
+            reply=reply,
+            state="showing_results",
+            matches=ranked,
+            booking_state="search_results",
+            active_agent=session.get("active_agent", "general"),
+        )
 
     def _is_actionable_match_query(self, message: str) -> bool:
         normalized = _normalize(message)

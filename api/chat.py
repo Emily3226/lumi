@@ -21,6 +21,7 @@ def _new_session() -> dict:
         "grade": None,
         "name": None,
         "active_agent": "general",
+        "pending_match_step": None,
         "query_text": None,
         "pending_booking_choice": None,
         "matches": [],
