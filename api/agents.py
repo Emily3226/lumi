@@ -129,6 +129,7 @@ def is_list_request(text: str) -> bool:
     return bool(re.search(r"\blist\b|show all mentors|available mentors", t))
 
 
+
 def is_agent_switch_request(text: str) -> bool:
     t = _normalize(text)
     return bool(
@@ -161,9 +162,14 @@ def is_booking_request(text: str, session: dict[str, Any]) -> bool:
 def is_match_request(text: str) -> bool:
     t = _normalize(text)
     return bool(
-        re.search(r"\bfind\b.*\bmentor\b|\bmake\b.*\bmatch\b|\bmatch\b|\bpair\b", t)
-        or re.search(r"\bneed help with\b|\blooking for\b.*\bmentor\b|\btutor\b", t)
+        re.search(r"\bfind\b.*\bmentor\b|\bmake\b.*\bmatch\b|\bmatch\b|\bpair\b|\bwant\b.*\bmentor\b|\bneed\b.*\bmentor\b", t)
+        or re.search(r"\bneed help with\b|\blooking for\b.*\bmentor\b|\btutor\b|\bneed\b.*\btutor\b", t)
     )
+
+
+def is_contest_request(text: str) -> bool:
+    t = _normalize(text)
+    return bool(re.search(r"\bcontest\b|\bolympiad\b|\bcompetition\b|\bAMC\b|\bAIME\b|contest math|contest problems|practice contest", t))
 
 
 def _token_set(text: str) -> set[str]:
@@ -296,9 +302,27 @@ class MentorTaskAgents:
         )
 
     def run(self, session_id: str, message: str, session: dict[str, Any], forced_agent: str | None = None) -> AgentResult:
+        if forced_agent in {"general", "match", "contest"} and not is_agent_switch_request(message):
+            self._set_active_agent(session, forced_agent)
+        # Natural-language auto-switch: set active agent based on intent phrases
+        if not is_agent_switch_request(message):
+            if is_match_request(message):
+                self._set_active_agent(session, "match")
+            elif is_contest_request(message):
+                self._set_active_agent(session, "contest")
         intent = self._intent_for(message, session, forced_agent)
         payload = {"session_id": session_id, "message": message, "session": session, "intent": intent}
         return self.router.invoke(payload)
+
+    def _set_active_agent(self, session: dict[str, Any], agent: str) -> None:
+        session["active_agent"] = agent
+        if agent == "general":
+            session["pending_match_step"] = None
+            session["matches"] = []
+            session["state"] = "idle"
+        elif agent == "match" and session.get("state") not in {"awaiting_match_details", "showing_results", "awaiting_booking_name"}:
+            session["pending_match_step"] = None
+            session["state"] = "idle"
 
     def _intent_for(self, message: str, session: dict[str, Any], forced_agent: str | None = None) -> str:
         if is_agent_switch_request(message):
@@ -377,6 +401,29 @@ class MentorTaskAgents:
                 lines.append(f"- {mentor['name']} · Grade {mentor['grade']} · {mentor['subject']} · {status}")
             return AgentResult(reply="\n".join(lines), state=session.get("state", "idle"), booking_state="mentor_list", active_agent=session.get("active_agent", "general"))
 
+        # Natural-language intent switches: if the user asks for a mentor or contest help, switch modes
+        if is_match_request(message):
+            session["active_agent"] = "match"
+            session["pending_match_step"] = "grade"
+            session["state"] = "awaiting_match_details"
+            return AgentResult(
+                reply=("Switched to the Match agent.\n\nWhat grade is the mentee in?"),
+                state="awaiting_match_details",
+                active_agent="match",
+                booking_state="needs_grade_and_subject",
+            )
+
+        if is_contest_request(message):
+            session["active_agent"] = "contest"
+            session["state"] = "idle"
+            return AgentResult(
+                reply=(
+                    "Switched to the Contest agent.\n\nAsk for a contest problem, a solution explanation, or say which contest you want to practice."
+                ),
+                state="idle",
+                active_agent="contest",
+            )
+
         general_answer = self._answer_general_question(message, session)
         if general_answer:
             return AgentResult(
@@ -394,6 +441,14 @@ class MentorTaskAgents:
         )
 
     def _answer_general_question(self, message: str, session: dict[str, Any]) -> str | None:
+        # Allow explicit user requests to switch agents (e.g., "switch to match agent")
+        if is_agent_switch_request(message):
+            target = _target_agent(message)
+            if target:
+                session["active_agent"] = target
+                session["state"] = "idle"
+                return f"Switched to the {target} agent. What would you like to do next?"
+
         file_answer = self._answer_from_general_knowledge(message)
         if file_answer:
             return file_answer
@@ -410,6 +465,11 @@ class MentorTaskAgents:
     def _answer_from_general_knowledge(self, message: str) -> str | None:
         entries = _load_general_knowledge_entries()
         if not entries:
+            return None
+
+        # Avoid matching very short inputs (greetings, one-word queries) against the KB
+        tokens = _token_set(message)
+        if len(tokens) < 3:
             return None
 
         normalized_message = _compact_text(message)
@@ -434,6 +494,8 @@ class MentorTaskAgents:
         prompt = (
             "You are Lumi's general fallback agent. The app already checked the local knowledge file first. "
             "Answer the user's question only if it is not covered there. Keep the response concise, direct, and friendly. "
+            "If the user is just greeting you with something like hi, hello, hey, or yo, reply with a brief friendly greeting and ask how you can help. "
+            "Never answer a greeting with a fact or date. Example: user says 'hi' -> assistant says 'Hello! How can I help you today?'. "
             "Do not answer mentor-matching or contest problems unless the user explicitly asks to switch modes. "
             "If you are not sure, say you do not know."
         )
@@ -441,12 +503,19 @@ class MentorTaskAgents:
         if not groq_api_key:
             return None
 
+        history = session.get("messages", [])
+        recent_history = [
+            item
+            for item in history[-10:]
+            if isinstance(item, dict) and item.get("role") in {"user", "assistant"} and item.get("content")
+        ]
+        messages = [{"role": "system", "content": prompt}]
+        messages.extend({"role": item["role"], "content": str(item["content"])} for item in recent_history)
+        messages.append({"role": "user", "content": message})
+
         payload = {
             "model": GROQ_MODEL,
-            "messages": [
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": message},
-            ],
+            "messages": messages,
             "temperature": 0.4,
         }
 
@@ -656,15 +725,15 @@ class MentorTaskAgents:
             return False
 
         tokens = _token_set(normalized)
+        # Very short queries are unlikely to be actionable matches unless they include a grade
         if len(tokens) < 3 and not extract_grade(normalized):
             return False
 
-        if subject_key(normalized):
-            return True
-
+        # Hint words that indicate a match/search intent
         if _contains_any(tokens, MATCH_QUERY_HINT_WORDS):
             return True
 
+        # Explicitly look for longer help-like queries
         if re.search(r"\b(help|need|looking|tutor)\b", normalized) and len(tokens) >= 4:
             return True
 

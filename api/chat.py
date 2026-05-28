@@ -25,6 +25,7 @@ def _new_session() -> dict:
         "query_text": None,
         "pending_booking_choice": None,
         "matches": [],
+        "messages": [],
     }
 
 
@@ -55,6 +56,8 @@ class ChatResponse(BaseModel):
 @router.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
     session = get_session(req.session_id)
+    session.setdefault("messages", [])
+    session["messages"].append({"role": "user", "content": req.message})
     result = agents.run(req.session_id, req.message, session, forced_agent=req.forced_agent)
 
     session["state"] = result.state
@@ -62,6 +65,8 @@ def chat(req: ChatRequest):
         session["active_agent"] = result.active_agent
     if result.matches is not None:
         session["matches"] = result.matches
+    session["messages"].append({"role": "assistant", "content": result.reply})
+    session["messages"] = session["messages"][-12:]
 
     return ChatResponse(
         reply=result.reply,
