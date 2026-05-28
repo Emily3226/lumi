@@ -15,6 +15,9 @@ from rag.subject_utils import subject_matches
 # Try to load the trained model
 _MODEL_CACHE = None
 _MODEL_AVAILABLE = False
+import logging
+
+logger = logging.getLogger(__name__)
 
 def _load_trained_model():
     """Load the trained mentor matcher model if it exists."""
@@ -27,10 +30,10 @@ def _load_trained_model():
         try:
             _MODEL_CACHE = joblib.load(model_path)
             _MODEL_AVAILABLE = True
-            print("Loaded trained mentor matcher model")
+            logger.info("Loaded trained mentor matcher model from %s", model_path)
             return _MODEL_CACHE
         except Exception as e:
-            print(f"Warning: failed to load trained model: {e}. Falling back to heuristic.")
+            logger.warning("Failed to load trained model: %s. Falling back to heuristic.", e)
             _MODEL_AVAILABLE = False
             return None
     return None
@@ -63,7 +66,7 @@ def _ml_score(mentee: dict, mentor: dict, trained_model: dict) -> float:
         
         return _normalize_score(score)
     except Exception as e:
-        print(f"Warning: ML scoring failed: {e}. Using heuristic.")
+        logger.warning("ML scoring failed: %s. Using heuristic.", e)
         return _heuristic_score(mentee, mentor)
 
 
@@ -112,8 +115,10 @@ def score_candidates(mentee: dict, candidates: list[dict], strict: bool = False)
         # Use trained model if available, otherwise use heuristic
         if trained_model and _MODEL_AVAILABLE:
             score = _ml_score(mentee, mentor, trained_model)
+            logger.debug('Scored with trained model: mentee=%s mentor=%s score=%s', mentee.get('name'), mentor.get('name'), score)
         else:
             score = _heuristic_score(mentee, mentor)
+            logger.debug('Scored with heuristic: mentee=%s mentor=%s score=%s', mentee.get('name'), mentor.get('name'), score)
 
         # Generate a simple rule-based explanation
         reasons = []

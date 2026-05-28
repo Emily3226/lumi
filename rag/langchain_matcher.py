@@ -20,18 +20,51 @@ def rank_candidates_langchain(mentee: dict, candidates: List[dict], top_k: int =
     """
     try:
         from langchain import PromptTemplate, LLMChain
-        # Try common LLM adapters. OpenAI may be present in many setups.
+
+        # Prefer a small Groq-backed LLM wrapper if possible, else fallback to OpenAI adapter
+        # Build a minimal Groq-backed LangChain LLM implementation only.
         try:
-            from langchain.llms import OpenAI  # type: ignore
-            LLMClass = OpenAI
-        except Exception:
-            # Fall back to generic import path for older versions
-            try:
-                from langchain.llms.openai import OpenAI  # type: ignore
-                LLMClass = OpenAI
-            except Exception:
-                logger.info("No OpenAI LLM adapter found for LangChain reranker")
-                return None
+            from langchain.llms.base import LLM
+            import os
+            import requests
+
+            class GroqLLM(LLM):
+                def __init__(self, model: str | None = None, temperature: float = 0.2):
+                    self.model = model or os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+                    self.temperature = temperature
+
+                def _call(self, prompt: str, stop: None | list[str] = None) -> str:
+                    api_key = os.getenv("GROQ_API_KEY", "").strip()
+                    if not api_key:
+                        raise ValueError("GROQ_API_KEY not configured for GroqLLM")
+                    payload = {
+                        "model": self.model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": float(self.temperature),
+                    }
+                    resp = requests.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
+                        json=payload,
+                        timeout=20,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    choices = data.get("choices") if isinstance(data, dict) else None
+                    if isinstance(choices, list) and choices:
+                        first = choices[0]
+                        msg = first.get("message") if isinstance(first, dict) else None
+                        if isinstance(msg, dict):
+                            content = msg.get("content")
+                            if content:
+                                return str(content)
+                    return ""
+
+            LLMClass = GroqLLM
+            logger.info("LangChain matcher will use GroqLLM if GROQ_API_KEY is set")
+        except Exception as exc:
+            logger.info("GroqLLM not available for LangChain reranker: %s", exc)
+            return None
 
         # Build prompt listing candidates and asking for ranking in JSON
         tmpl = (
@@ -102,6 +135,10 @@ def rank_candidates_langchain(mentee: dict, candidates: List[dict], top_k: int =
             out.append(newc)
 
         out.sort(key=lambda x: x.get("match_score", 0.0), reverse=True)
+        try:
+            logger.info("LangChain reranker used for mentee %s; returning %d candidates", mentee.get("name"), len(out[:top_k]))
+        except Exception:
+            logger.info("LangChain reranker used; returning candidates")
         return out[:top_k]
 
     except Exception as exc:  # pragma: no cover - optional integration

@@ -5,6 +5,9 @@ from __future__ import annotations
 import csv
 import os
 import sqlite3
+import logging
+
+logger = logging.getLogger(__name__)
 
 from models.inference import score_candidates
 from rag.retriever import MentorRetriever
@@ -132,7 +135,10 @@ def match_mentors(
         langchain_ranked = None
 
     if langchain_ranked:
-        ranked = langchain_ranked
+        logger.info("Using LangChain reranker for query: %s", query_text)
+        # Even when LangChain produces an initial ranking, use the trained model
+        # to compute final match scores so the trained program remains authoritative.
+        ranked = score_candidates(mentee, langchain_ranked, strict=False)
     else:
         ranked = score_candidates(mentee, candidates, strict=False)
     return mentee, ranked
