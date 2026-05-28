@@ -8,6 +8,7 @@ import sqlite3
 
 from models.inference import score_candidates
 from rag.retriever import MentorRetriever
+from rag.langchain_matcher import rank_candidates_langchain
 from rag.subject_utils import expand_query_text, subject_key
 
 
@@ -123,7 +124,17 @@ def match_mentors(
         "subject_hint": subject_hint,
         "query_text": query_text.strip(),
     }
-    ranked = score_candidates(mentee, candidates, strict=False)
+    # Try LangChain-based reranker first (optional). If unavailable, fall back to internal scorer.
+    langchain_ranked = None
+    try:
+        langchain_ranked = rank_candidates_langchain(mentee, candidates, top_k=top_k)
+    except Exception:
+        langchain_ranked = None
+
+    if langchain_ranked:
+        ranked = langchain_ranked
+    else:
+        ranked = score_candidates(mentee, candidates, strict=False)
     return mentee, ranked
 
 
