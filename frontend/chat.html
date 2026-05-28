@@ -25,6 +25,7 @@
       .avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-weight:600;flex-shrink:0;font-size:15px}
       .avatar.user{background:var(--user)}
       .avatar.bot{background:var(--bot)}
+      .avatar.general{background:var(--accent)}
       .avatar.match{background:#8b5cf6}
       .avatar.contest{background:var(--contest)}
 
@@ -108,7 +109,7 @@
       </header>
 
       <div class="quick-actions">
-        <button type="button" class="quick-action active" data-agent="general">General Agent</button>
+        <button type="button" class="quick-action active" data-agent="general">🧠 General Agent</button>
         <button type="button" class="quick-action" data-agent="match">🤝 Match Agent</button>
         <button type="button" class="quick-action contest-btn" data-agent="contest">🏆 Contest Help</button>
       </div>
@@ -204,8 +205,9 @@
         const wrap = document.createElement('div');
         wrap.className = 'msg ' + role;
         const av = document.createElement('div');
-        av.className = 'avatar ' + (avatarType || role);
-        av.textContent = role === 'user' ? 'Y' : (avatarType === 'contest' ? '🏆' : avatarType === 'match' ? '🤝' : 'B');
+        const effectiveAvatar = avatarType || (role === 'bot' ? 'general' : role);
+        av.className = 'avatar ' + effectiveAvatar;
+        av.textContent = role === 'user' ? 'Y' : (effectiveAvatar === 'contest' ? '🏆' : effectiveAvatar === 'match' ? '🤝' : '🧠');
         const bub = document.createElement('div');
         bub.className = 'bubble';
         bub.innerHTML = escHtml(text)
