@@ -34,7 +34,6 @@ class ContestResult:
     reply: str
     problems: list[dict] | None = None
     intent: str = "general"
-    active_agent: str | None = None
 
 
 # ── Intent detection ──────────────────────────────────────────────────────────
@@ -117,28 +116,6 @@ def _extract_grade(text: str) -> int | None:
     return None
 
 
-def _is_agent_switch_request(text: str) -> bool:
-    n = _norm(text)
-    return bool(
-        (
-            re.search(r"\bswitch\b|\bchange\b|\bgo to\b|\bopen\b|\buse\b", n)
-            and re.search(r"\bgeneral\b|\bmatch\b|\bcontest\b", n)
-        )
-        or re.search(r"\bgeneral\s+agent\b|\bmatch\s+agent\b|\bcontest\s+agent\b", n)
-    )
-
-
-def _target_agent(text: str) -> str | None:
-    n = _norm(text)
-    if re.search(r"\bgeneral\b", n):
-        return "general"
-    if re.search(r"\bmatch\b", n):
-        return "match"
-    if re.search(r"\bcontest\b", n):
-        return "contest"
-    return None
-
-
 def detect_intent(text: str) -> str:
     """
     Returns one of:
@@ -181,60 +158,33 @@ def _unavailable_reply() -> ContestResult:
     )
 
 
-def _format_problem(result: dict, show_solution: bool = False, index: int | None = None) -> str:
-    lines = []
+def _format_problem(result: dict, index: int | None = None) -> str:
+    """Format a problem reference for the chat reply text (not the image)."""
     prefix = f"**{index}.** " if index is not None else ""
     prob_label = f"Problem {result['problem_number']}" if result["problem_number"] else "Problem"
-    if result.get("part"):
-        prob_label += f" (Part {result['part']})"
-    lines.append(f"{prefix}**{result['contest']} {result['year']} — {prob_label}**")
-
-    if result["topics"]:
+    lines = [f"{prefix}**{result['contest']} {result['year']} — {prob_label}**"]
+    if result.get("topics"):
         lines.append(f"Topics: {', '.join(result['topics'])}")
-
-    lines.append("")
-    # Show only the problem portion of the document
-    doc = result.get("document", "")
-    # Strip the header lines we added during ingestion
-    doc_lines = doc.split("\n")
-    content_start = next(
-        (i for i, l in enumerate(doc_lines) if l.strip() and not l.startswith("Contest:") and not l.startswith("Problem") and not l.startswith("Topics:")),
-        0,
-    )
-    problem_section = "\n".join(doc_lines[content_start:]).strip()
-
-    if show_solution:
-        lines.append(problem_section)
+    has_sol = result.get("has_solution", False)
+    if has_sol:
+        lines.append("_Solution available — click Show solution below the image._")
     else:
-        # Show only up to "Solution:" divider
-        sol_idx = problem_section.find("\nSolution:")
-        if sol_idx > 0:
-            lines.append(problem_section[:sol_idx].strip())
-        else:
-            lines.append(problem_section)
-
+        lines.append("_No solution available for this problem._")
     return "\n".join(lines)
 
 
 def _format_solution_explanation(result: dict) -> str:
-    doc = result.get("document", "")
-    sol_idx = doc.find("\nSolution:")
-    if sol_idx < 0:
-        return "No solution found for this problem in the database."
-
-    problem_part = doc[:sol_idx].strip()
-    solution_part = doc[sol_idx:].strip()
-
-    lines = [
-        f"**{result['contest']} {result['year']} — Problem {result['problem_number']}**",
-        "",
-        "**Problem:**",
-        problem_part.split("\n", 4)[-1] if "\n" in problem_part else problem_part,  # skip headers
-        "",
-        "**Solution (step by step):**",
-        solution_part.replace("Solution:", "").strip(),
-    ]
-    return "\n".join(lines)
+    """Return a reply directing user to the solution image panel."""
+    prob_label = f"Problem {result['problem_number']}" if result["problem_number"] else "Problem"
+    has_sol = result.get("has_solution", False)
+    if not has_sol:
+        return (
+            f"No solution is available for **{result['contest']} {result['year']} — {prob_label}**."
+        )
+    return (
+        f"Here is **{result['contest']} {result['year']} — {prob_label}**. "
+        f"The solution is shown below — click **Show solution** to reveal it."
+    )
 
 
 def handle_list_contests() -> ContestResult:
@@ -263,9 +213,29 @@ def handle_specific_problem(text: str) -> ContestResult:
             intent="specific_problem",
         )
 
+    # If contest + year + problem number all given, do exact lookup first
+    if contest and year and prob_num:
+        all_problems = get_by_contest_year(contest, year, n=30)
+        exact = [r for r in all_problems if r["problem_number"] == prob_num]
+        if exact:
+            result = exact[0]
+            reply = _format_problem(result)
+            return ContestResult(
+                reply=reply,
+                problems=[result],
+                intent="specific_problem",
+            )
+        # Not found in index - fall through to semantic search with helpful message
+        desc = f"{contest} {year} Problem {prob_num}"
+        return ContestResult(
+            reply=f"Could not find **{desc}** in the database. Make sure the PDFs have been ingested and re-run ingestion with --clear.",
+            intent="specific_problem",
+        )
+
+    # Semantic search fallback (no specific problem number, or partial info)
     results = chroma_query(
         text=text,
-        n_results=5,
+        n_results=8,
         contest=contest,
         year=year,
         topic=topic,
@@ -278,7 +248,7 @@ def handle_specific_problem(text: str) -> ContestResult:
             intent="specific_problem",
         )
 
-    # If a specific problem number was requested, try to match it
+    # Filter by problem number if given
     if prob_num:
         exact = [r for r in results if r["problem_number"] == prob_num]
         if exact:
@@ -286,9 +256,7 @@ def handle_specific_problem(text: str) -> ContestResult:
 
     lines = [f"Here {'is' if len(results) == 1 else 'are'} the matching problem{'s' if len(results) > 1 else ''}:\n"]
     for i, result in enumerate(results[:3], 1):
-        lines.append(_format_problem(result, show_solution=False, index=i))
-        if result["has_solution"]:
-            lines.append('_Type "explain solution" to walk through it step by step._')
+        lines.append(_format_problem(result, index=i))
         lines.append("")
 
     return ContestResult(
@@ -375,7 +343,7 @@ def handle_practice(text: str) -> ContestResult:
     lines = [f"Here are practice problems for **{topic_label}**{grade_label}:\n"]
 
     for i, result in enumerate(deduped[:5], 1):
-        lines.append(_format_problem(result, show_solution=False, index=i))
+        lines.append(_format_problem(result, index=i))
         lines.append("")
 
     lines.append('_Ask me to "explain the solution" for any of these to walk through it step by step._')
@@ -396,7 +364,7 @@ def handle_concept(text: str) -> ContestResult:
     if results:
         concept_reply += "\n\n**Example contest problems:**\n"
         for i, result in enumerate(results[:2], 1):
-            concept_reply += "\n" + _format_problem(result, show_solution=False, index=i) + "\n"
+            concept_reply += "\n" + _format_problem(result, index=i) + "\n"
 
     return ContestResult(reply=concept_reply, problems=results[:2] if results else None, intent="concept")
 
@@ -501,7 +469,7 @@ def handle_search(text: str) -> ContestResult:
 
     lines = ["Here are the most relevant problems I found:\n"]
     for i, result in enumerate(results[:4], 1):
-        lines.append(_format_problem(result, show_solution=False, index=i))
+        lines.append(_format_problem(result, index=i))
         lines.append("")
 
     return ContestResult(
@@ -517,26 +485,6 @@ class ContestAgent:
     """Drop-in agent for Waterloo contest math knowledge."""
 
     def run(self, message: str, session: dict[str, Any] | None = None) -> ContestResult:
-        if _is_agent_switch_request(message):
-            target = _target_agent(message)
-            if target:
-                if target == "general":
-                    reply = (
-                        "Switched to the General agent.\n\n"
-                        "You can ask general questions from the knowledge file or switch again anytime."
-                    )
-                elif target == "match":
-                    reply = (
-                        "Switched to the Match agent.\n\n"
-                        "Send a subject or skill request like 'I need help with calculus' to find mentors."
-                    )
-                else:
-                    reply = (
-                        "You are already in the Contest agent.\n\n"
-                        "Ask for a specific problem, explanation, or practice set."
-                    )
-                return ContestResult(reply=reply, intent="switch", active_agent=target)
-
         if collection_count() == 0:
             # Still allow concept questions even without indexed data
             intent = detect_intent(message)

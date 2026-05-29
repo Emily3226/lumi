@@ -165,7 +165,9 @@ def query(
             "has_diagram": meta.get("has_diagram") == "True",
             "source_file": meta.get("source_file", ""),
             "pdf_path": meta.get("pdf_path", ""),
+            "solution_pdf_path": meta.get("solution_pdf_path", ""),
             "page_number": int(meta.get("page_number", 0)),
+            "solution_page_number": int(meta.get("solution_page_number", 0)),
             "similarity": round(similarity, 3),
         })
 
@@ -195,7 +197,9 @@ def get_by_contest_year(contest: str, year: int, n: int = 20) -> list[dict]:
                 "has_solution": meta.get("has_solution") == "True",
                 "has_diagram": meta.get("has_diagram") == "True",
                 "pdf_path": meta.get("pdf_path", ""),
+                "solution_pdf_path": meta.get("solution_pdf_path", ""),
                 "page_number": int(meta.get("page_number", 0)),
+                "solution_page_number": int(meta.get("solution_page_number", 0)),
             })
         output.sort(key=lambda x: x["problem_number"] or 0)
         return output
