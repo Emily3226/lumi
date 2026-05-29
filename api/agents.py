@@ -15,6 +15,7 @@ from langchain_core.runnables import RunnableBranch, RunnableLambda
 import requests
 
 from api.services import book_pairing_in_db, list_available_mentors, match_mentors
+from api.memory_store import get_memory_context
 from rag.subject_utils import subject_key
 
 
@@ -198,45 +199,143 @@ def _contains_any(tokens: set[str], words: set[str]) -> bool:
     return bool(tokens & words)
 
 
+def _build_memory_context(session: dict[str, Any], limit: int = 24, max_chars: int = 4000) -> str:
+    facts: list[str] = []
+    name = session.get("name")
+    grade = session.get("grade")
+    subject = session.get("subject")
+    active_agent = session.get("active_agent")
+    if name:
+        facts.append(f"known name: {name}")
+    if grade:
+        facts.append(f"known grade: {grade}")
+    if subject:
+        facts.append(f"known subject: {subject}")
+    if active_agent:
+        facts.append(f"active agent: {active_agent}")
+
+    history = session.get("messages", [])
+    recent_history = [
+        item
+        for item in history[-limit:]
+        if isinstance(item, dict) and item.get("role") in {"user", "assistant"} and item.get("content")
+    ]
+    history_lines = [f"{item['role']}: {str(item['content']).strip()}" for item in recent_history]
+
+    blocks: list[str] = []
+    if facts:
+        blocks.append("Session facts:\n- " + "\n- ".join(facts))
+    if history_lines:
+        memory_text = "\n".join(history_lines)
+        if len(memory_text) > max_chars:
+            memory_text = memory_text[-max_chars:]
+        blocks.append("Conversation memory:\n" + memory_text)
+
+    return "\n\n".join(blocks)
+
+
 EDUCATION_SCOPE_HINTS = {
     "school",
+    "class",
+    "classroom",
+    "course",
+    "program",
+    "programs",
+    "lesson",
+    "teacher",
     "student",
     "homework",
     "assignment",
+    "worksheet",
+    "quiz",
+    "test",
+    "exam",
+    "notes",
     "study",
     "learn",
-    "lesson",
-    "teacher",
     "tutor",
     "mentor",
+    "math",
+    "science",
+    "biology",
+    "chemistry",
+    "physics",
+    "english",
+    "history",
+    "geography",
+    "computer science",
+    "programming",
+    "coding",
     "calculus",
     "algebra",
     "geometry",
     "trigonometry",
-    "physics",
-    "chemistry",
-    "biology",
-    "english",
     "essay",
     "grammar",
     "contest",
-    "euclid",
-    "fryer",
-    "galois",
-    "hypatia",
-    "gauss",
-    "pascal",
-    "cayley",
-    "fermat",
-    "cimc",
-    "csmc",
-    "book",
-    "schedule",
-    "session",
-    "grade",
-    "exam",
     "practice",
     "question",
+    "grade",
+    "ap",
+    "ap program",
+    "advanced placement",
+    "ib",
+    "ib program",
+    "international baccalaureate",
+    "pre-ib",
+    "pre ib",
+    "dp",
+    "myp",
+    "cp",
+    "school work",
+    "school-related",
+    "auxilium",
+    "app",
+    "account",
+    "login",
+    "profile",
+    "settings",
+    "agent",
+    "mode",
+    "memory",
+    "booking",
+    "session",
+    "support",
+    "help",
+    "feedback",
+    "bug",
+    "issue",
+    "feature",
+    "switch"
+    "university",
+}
+
+CONVERSATIONAL_SCOPE_HINTS = {
+    "hello",
+    "hi",
+    "hey",
+    "thanks",
+    "thank you",
+    "good morning",
+    "good afternoon",
+    "good evening",
+    "how are you",
+    "what can you do",
+    "tell me",
+    "can you",
+    "could you",
+    "what do you think",
+    "chat",
+    "conversation",
+    "remember",
+    "recall",
+    "what do you remember",
+    "memory",
+    "opinion",
+    "joke",
+    "story",
+    "random",
+    "casual",
 }
 
 SIMPLE_SMALL_TALK_HINTS = {
@@ -259,34 +358,6 @@ SIMPLE_SMALL_TALK_HINTS = {
     "bye",
     "see you",
 }
-
-OUT_OF_SCOPE_MESSAGE = (
-    "I'm built for education and Auxilium tasks only, so I can't help with that request. "
-    "If you want, I can help with tutoring, school subjects, contest problems, or mentor matching."
-)
-
-
-def _is_in_scope_of_education(message: str) -> bool:
-    if _is_simple_small_talk(message):
-        return True
-    if _is_date_or_time_question(message) or _is_transformation_request(message):
-        return True
-    return _contains_any(_token_set(message), EDUCATION_SCOPE_HINTS)
-
-
-def _is_simple_small_talk(message: str) -> bool:
-    normalized = _normalize(message)
-    if not normalized:
-        return False
-    if normalized in SIMPLE_SMALL_TALK_HINTS:
-        return True
-
-    tokens = _token_set(normalized)
-    if len(tokens) <= 4 and any(hint in normalized for hint in SIMPLE_SMALL_TALK_HINTS):
-        return True
-
-    return False
-
 
 MATCH_QUERY_HINT_WORDS = {
     "help",
@@ -314,6 +385,38 @@ MATCH_QUERY_HINT_WORDS = {
     "essay",
     "grammar",
 }
+
+OUT_OF_SCOPE_MESSAGE = (
+    "I'm built for education and Auxilium tasks only, so I can't help with that request. "
+    "If you want, I can help with tutoring, school subjects, contest problems, or mentor matching."
+)
+
+
+def _is_simple_small_talk(message: str) -> bool:
+    normalized = _normalize(message)
+    if not normalized:
+        return False
+    if normalized in SIMPLE_SMALL_TALK_HINTS:
+        return True
+
+    tokens = _token_set(normalized)
+    if len(tokens) <= 4 and any(hint in normalized for hint in SIMPLE_SMALL_TALK_HINTS):
+        return True
+
+    return False
+
+
+def _is_in_scope_of_education(message: str) -> bool:
+    normalized = _normalize(message)
+    if _is_simple_small_talk(message):
+        return True
+    if normalized and any(hint in normalized for hint in CONVERSATIONAL_SCOPE_HINTS):
+        return True
+    if normalized and re.search(r"\b(what is|what are|how does|how do|why is|why are|define|definition|explain|tell me about)\b", normalized):
+        return True
+    if _is_date_or_time_question(message) or _is_transformation_request(message):
+        return True
+    return _contains_any(_token_set(message), EDUCATION_SCOPE_HINTS)
 
 
 def _load_general_knowledge_entries() -> list[dict[str, str]]:
@@ -651,8 +754,16 @@ class MentorTaskAgents:
             today = datetime.now().strftime("%B %d, %Y").replace(" 0", " ")
             date_context = f"The current date is {today}. Use it when answering date and time questions. "
 
+        memory_context = _build_memory_context(session)
+        persistent_memory = get_memory_context()
+        if persistent_memory:
+            memory_context = (memory_context + "\n\n" if memory_context else "") + persistent_memory
+        if memory_context:
+            memory_context = f"Use the following conversation memory when answering.\n{memory_context}\n\n"
+
         prompt = (
             f"You are Lumi's general fallback agent. {date_context}"
+            f"{memory_context}"
             "The local knowledge file did not contain an answer for this question."
             " Provide a concise, helpful reply to the user's question using any recent conversation context supplied. "
             "Do not refuse to answer; if uncertain, give a best-effort response and indicate uncertainty clearly. "

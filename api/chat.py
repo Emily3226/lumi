@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from api.agents import MentorTaskAgents
+from api.memory_store import observe_turn
 from api.session_store import get_session, reset_session, save_sessions, sessions
 
 router = APIRouter()
@@ -39,8 +40,9 @@ def chat(req: ChatRequest):
     if result.matches is not None:
         session["matches"] = result.matches
     session["messages"].append({"role": "assistant", "content": result.reply})
-    session["messages"] = session["messages"][-12:]
+    session["messages"] = session["messages"][-40:]
     save_sessions(sessions)
+    observe_turn(req.session_id, req.message, result.reply, result.active_agent or session.get("active_agent"))
 
     return ChatResponse(
         reply=result.reply,
