@@ -15,11 +15,14 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
+from fastapi.responses import RedirectResponse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 # dev reload marker
 
@@ -35,6 +38,10 @@ app.include_router(admin_router, prefix="/admin")
 app.include_router(contest_router, prefix="/contest")
 app.include_router(image_router, prefix="/contest")
 
+# Serve the frontend directory so the app can be opened via HTTP (avoids file:// CORS issues)
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+app.mount("/frontend", StaticFiles(directory=str(FRONTEND_DIR)), name="frontend")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -43,6 +50,11 @@ app.add_middleware(
 )
 
 init_db()
+
+
+@app.get("/")
+def root():
+    return RedirectResponse(url="/frontend/chat.html")
 
 
 # ── Request / Response models ─────────────────────────────────────────────────

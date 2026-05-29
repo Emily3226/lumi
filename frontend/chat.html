@@ -155,6 +155,10 @@
     </div>
 
     <script>
+      if (location.protocol === 'file:') {
+        location.replace('http://localhost:8000/frontend/chat.html');
+      }
+
       const API = 'http://localhost:8000';
       const SESSION = 'session_' + Math.random().toString(36).slice(2, 9);
       const messagesEl = document.getElementById('messages');
@@ -302,9 +306,11 @@
         try {
           const params = new URLSearchParams({
             pdf_path: problem.pdf_path,
-            page: problem.page_number || 0,
+            prob_num: problem.problem_number || (problem.page_number || 1),
+            contest: problem.contest || '',
             scale: 2.0,
             show_solution: showSolution,
+            solution_pdf_path: problem.solution_pdf_path || '',
           });
           const res = await fetch(`${API}/contest/page-image?${params}`);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
