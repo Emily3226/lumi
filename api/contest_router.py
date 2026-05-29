@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from api.contest_agent import contest_agent
+from api.session_store import get_session, save_sessions, sessions
 from rag.contest_retriever import (
     collection_count,
     get_by_contest_year,
@@ -34,6 +35,7 @@ class ContestChatResponse(BaseModel):
     reply: str
     problems: list[dict] | None = None
     intent: str
+    active_agent: str | None = None
 
 
 class ContestSearchRequest(BaseModel):
@@ -53,11 +55,24 @@ def contest_ask(req: ContestChatRequest):
     Main conversational endpoint.
     Routes to the appropriate handler based on intent detection.
     """
-    result = contest_agent.run(req.message)
+    session_id = req.session_id or "contest_default"
+    session = get_session(session_id)
+    session.setdefault("messages", [])
+    session["messages"].append({"role": "user", "content": req.message})
+
+    result = contest_agent.run(req.message, session)
+    if result.active_agent:
+        session["active_agent"] = result.active_agent
+    if result.problems is not None:
+        session["matches"] = result.problems
+    session["messages"].append({"role": "assistant", "content": result.reply})
+    session["messages"] = session["messages"][-12:]
+    save_sessions(sessions)
     return ContestChatResponse(
         reply=result.reply,
         problems=result.problems,
         intent=result.intent,
+        active_agent=result.active_agent,
     )
 
 

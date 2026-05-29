@@ -1,0 +1,200 @@
+{
+  "persist_check2": {
+    "state": "awaiting_match_details",
+    "subject": "math",
+    "grade": null,
+    "name": null,
+    "active_agent": "match",
+    "pending_match_step": "grade",
+    "query_text": null,
+    "pending_booking_choice": null,
+    "matches": [],
+    "messages": [
+      {
+        "role": "user",
+        "content": "I need help with calculus"
+      },
+      {
+        "role": "assistant",
+        "content": "What grade is the mentee in?"
+      }
+    ]
+  },
+  "contest_mem_test": {
+    "state": "idle",
+    "subject": null,
+    "grade": null,
+    "name": null,
+    "active_agent": "general",
+    "pending_match_step": null,
+    "query_text": null,
+    "pending_booking_choice": null,
+    "matches": [
+      {
+        "document": "Contest: Euclid 2016\nProblem 3\nTopics: number_theory, geometry, sequences\n\n3\n(a)\nt e d ag a\n, po\nt\ns o\nC, po\nt\ns o\n, a d po\nt G s o\nA\nB\nC\nD\nE\nF\nG\np˚\nq˚\nu˚\nt˚\nr˚\ns˚\nWhat is the value of p + q + r + s + t + u?\n(b) Let n be the integer equal to 1020 −20. What is the sum of the digits of n?\n(c) A parabola intersects the x-axis at P(2, 0) and Q(8, 0). The vertex of the parabola\nis at V , which is below the x-axis. If the area of △V PQ is 12, determine the\ncoordinates of V .\n4.\n(a) Determine all angles θ with 0◦≤θ ≤180◦and sin2 θ + 2 cos2 θ = 7\n4.",
+        "contest": "Euclid",
+        "year": 2016,
+        "problem_number": 3,
+        "part": null,
+        "topics": [
+          "number_theory",
+          "geometry",
+          "sequences"
+        ],
+        "grades": [
+          12
+        ],
+        "has_solution": true,
+        "has_diagram": true,
+        "source_file": "2016EuclidContest.pdf",
+        "pdf_path": "C:\\Users\\ezhan\\lumi\\contests\\Euclid\\2016EuclidContest.pdf",
+        "solution_pdf_path": "C:\\Users\\ezhan\\lumi\\contests\\Euclid\\2016EuclidSolution.pdf",
+        "page_number": 2,
+        "solution_page_number": 1,
+        "similarity": 0.494
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "Show me Euclid 2016 Q3"
+      },
+      {
+        "role": "assistant",
+        "content": "Here is **Euclid 2016 — Problem 3**. The solution is shown below — click **Show solution** to reveal it."
+      },
+      {
+        "role": "user",
+        "content": "back to general"
+      },
+      {
+        "role": "assistant",
+        "content": "Switched back to the General agent.\n\nYou can ask me a mentor, booking, or general education question next."
+      }
+    ]
+  },
+  "session_h9ssvcv": {
+    "state": "idle",
+    "subject": null,
+    "grade": null,
+    "name": null,
+    "active_agent": "general",
+    "pending_match_step": null,
+    "query_text": null,
+    "pending_booking_choice": null,
+    "matches": [],
+    "messages": [
+      {
+        "role": "user",
+        "content": "okay i need help with math"
+      },
+      {
+        "role": "assistant",
+        "content": "I'm built for education and Auxilium tasks only, so I can't help with that request. If you want, I can help with tutoring, school subjects, contest problems, or mentor matching."
+      },
+      {
+        "role": "user",
+        "content": "hi"
+      },
+      {
+        "role": "assistant",
+        "content": "I can help with mentor matching, school subjects, and contest problems. If you want, say 'switch to general' to chat normally."
+      },
+      {
+        "role": "user",
+        "content": "switch to general"
+      },
+      {
+        "role": "assistant",
+        "content": "Switched to the General agent.\n\nYou can ask me questions from the knowledge file or request another mode anytime."
+      },
+      {
+        "role": "user",
+        "content": "hi"
+      },
+      {
+        "role": "assistant",
+        "content": "How can I help you today?"
+      },
+      {
+        "role": "user",
+        "content": "what is today's date"
+      },
+      {
+        "role": "assistant",
+        "content": "Today's date is May 29, 2026."
+      },
+      {
+        "role": "user",
+        "content": "how are u"
+      },
+      {
+        "role": "assistant",
+        "content": "I'm built for education and Auxilium tasks only, so I can't help with that request. If you want, I can help with tutoring, school subjects, contest problems, or mentor matching."
+      }
+    ]
+  },
+  "switch_test_1": {
+    "state": "idle",
+    "subject": null,
+    "grade": null,
+    "name": null,
+    "active_agent": "general",
+    "pending_match_step": null,
+    "query_text": null,
+    "pending_booking_choice": null,
+    "matches": [],
+    "messages": [
+      {
+        "role": "user",
+        "content": "hello"
+      },
+      {
+        "role": "assistant",
+        "content": "It's nice to chat with you. How can I help you today?"
+      }
+    ]
+  },
+  "switch_test_2": {
+    "state": "idle",
+    "subject": null,
+    "grade": null,
+    "name": null,
+    "active_agent": "contest",
+    "pending_match_step": null,
+    "query_text": null,
+    "pending_booking_choice": null,
+    "matches": [],
+    "messages": [
+      {
+        "role": "user",
+        "content": "switch to contest agent"
+      },
+      {
+        "role": "assistant",
+        "content": "Switched to the Contest agent.\n\nAsk me for a specific contest problem, a solution explanation, or a practice set."
+      }
+    ]
+  },
+  "switch_test_3": {
+    "state": "idle",
+    "subject": null,
+    "grade": null,
+    "name": null,
+    "active_agent": "general",
+    "pending_match_step": null,
+    "query_text": null,
+    "pending_booking_choice": null,
+    "matches": [],
+    "messages": [
+      {
+        "role": "user",
+        "content": "back to general"
+      },
+      {
+        "role": "assistant",
+        "content": "Switched back to the General agent.\n\nYou can ask me a mentor, booking, or general education question next."
+      }
+    ]
+  }
+}

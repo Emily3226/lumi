@@ -198,6 +198,96 @@ def _contains_any(tokens: set[str], words: set[str]) -> bool:
     return bool(tokens & words)
 
 
+EDUCATION_SCOPE_HINTS = {
+    "school",
+    "student",
+    "homework",
+    "assignment",
+    "study",
+    "learn",
+    "lesson",
+    "teacher",
+    "tutor",
+    "mentor",
+    "calculus",
+    "algebra",
+    "geometry",
+    "trigonometry",
+    "physics",
+    "chemistry",
+    "biology",
+    "english",
+    "essay",
+    "grammar",
+    "contest",
+    "euclid",
+    "fryer",
+    "galois",
+    "hypatia",
+    "gauss",
+    "pascal",
+    "cayley",
+    "fermat",
+    "cimc",
+    "csmc",
+    "book",
+    "schedule",
+    "session",
+    "grade",
+    "exam",
+    "practice",
+    "question",
+}
+
+SIMPLE_SMALL_TALK_HINTS = {
+    "hello",
+    "hi",
+    "hey",
+    "thanks",
+    "thank",
+    "thank you",
+    "ok",
+    "okay",
+    "cool",
+    "great",
+    "good morning",
+    "good afternoon",
+    "good evening",
+    "how are you",
+    "what can you do",
+    "help",
+    "bye",
+    "see you",
+}
+
+OUT_OF_SCOPE_MESSAGE = (
+    "I'm built for education and Auxilium tasks only, so I can't help with that request. "
+    "If you want, I can help with tutoring, school subjects, contest problems, or mentor matching."
+)
+
+
+def _is_in_scope_of_education(message: str) -> bool:
+    if _is_simple_small_talk(message):
+        return True
+    if _is_date_or_time_question(message) or _is_transformation_request(message):
+        return True
+    return _contains_any(_token_set(message), EDUCATION_SCOPE_HINTS)
+
+
+def _is_simple_small_talk(message: str) -> bool:
+    normalized = _normalize(message)
+    if not normalized:
+        return False
+    if normalized in SIMPLE_SMALL_TALK_HINTS:
+        return True
+
+    tokens = _token_set(normalized)
+    if len(tokens) <= 4 and any(hint in normalized for hint in SIMPLE_SMALL_TALK_HINTS):
+        return True
+
+    return False
+
+
 MATCH_QUERY_HINT_WORDS = {
     "help",
     "struggling",
@@ -425,6 +515,14 @@ class MentorTaskAgents:
                     booking_state="needs_grade_and_subject" if target == "match" else session.get("state", "idle"),
                 )
 
+        if not _is_in_scope_of_education(message):
+            return AgentResult(
+                reply=OUT_OF_SCOPE_MESSAGE,
+                state=session.get("state", "idle"),
+                booking_state=session.get("state", "idle"),
+                active_agent=session.get("active_agent", "general"),
+            )
+
         if is_restart_request(message):
             session.clear()
             session.update({"state": "idle", "subject": None, "grade": None, "name": None, "matches": [], "active_agent": "general", "pending_match_step": None})
@@ -613,6 +711,37 @@ class MentorTaskAgents:
         session = context["session"]
         matches = session.get("matches", [])
         choice = extract_choice(message)
+
+        if is_agent_switch_request(message):
+            target = _target_agent(message)
+            if target:
+                session["active_agent"] = target
+                session["state"] = "idle"
+                if target == "general":
+                    return AgentResult(
+                        reply="Switched to the General agent. What would you like to do next?",
+                        state="idle",
+                        matches=[],
+                        booking_state="switched_general",
+                        active_agent="general",
+                    )
+                if target == "contest":
+                    return AgentResult(
+                        reply="Switched to the Contest agent. Ask for a contest problem or an explanation.",
+                        state="idle",
+                        matches=[],
+                        booking_state="switched_contest",
+                        active_agent="contest",
+                    )
+
+        if _is_simple_small_talk(message) and not matches:
+            return AgentResult(
+                reply="I can help with mentor matching, school subjects, and contest problems. If you want, say 'switch to general' to chat normally.",
+                state=session.get("state", "idle"),
+                matches=[],
+                booking_state=session.get("state", "idle"),
+                active_agent=session.get("active_agent", "match"),
+            )
 
         if session.get("state") == "awaiting_booking_name":
             mentee_name = message.strip().title()

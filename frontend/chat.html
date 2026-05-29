@@ -160,7 +160,9 @@
       }
 
       const API = 'http://localhost:8000';
-      const SESSION = 'session_' + Math.random().toString(36).slice(2, 9);
+      const SESSION_KEY = 'lumi_session_id';
+      const SESSION = localStorage.getItem(SESSION_KEY) || ('session_' + Math.random().toString(36).slice(2, 9));
+      localStorage.setItem(SESSION_KEY, SESSION);
       const messagesEl = document.getElementById('messages');
       const inputEl = document.getElementById('input');
       let selectedAgent = 'general';
@@ -426,6 +428,11 @@
           addMsg('bot', data.reply || 'No reply.', 'contest');
           if (data.active_agent && data.active_agent !== selectedAgent) {
             applySelectedAgent(data.active_agent, false);
+          }
+          if (data.active_agent === 'general') {
+            selectedAgent = 'general';
+            activeChatMode = 'general';
+            document.getElementById('contest-panel').style.display = 'none';
           }
           if (data.problems && data.problems.length) {
             renderProblems(data.problems);

@@ -6,37 +6,10 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from api.agents import MentorTaskAgents
+from api.session_store import get_session, reset_session, save_sessions, sessions
 
 router = APIRouter()
 agents = MentorTaskAgents()
-
-# In production swap this for Redis or a DB table keyed by session_id.
-sessions: dict[str, dict] = {}
-
-
-def _new_session() -> dict:
-    return {
-        "state": "idle",
-        "subject": None,
-        "grade": None,
-        "name": None,
-        "active_agent": "general",
-        "pending_match_step": None,
-        "query_text": None,
-        "pending_booking_choice": None,
-        "matches": [],
-        "messages": [],
-    }
-
-
-def get_session(session_id: str) -> dict:
-    if session_id not in sessions:
-        sessions[session_id] = _new_session()
-    return sessions[session_id]
-
-
-def reset_session(session_id: str) -> None:
-    sessions[session_id] = _new_session()
 
 
 class ChatRequest(BaseModel):
@@ -67,6 +40,7 @@ def chat(req: ChatRequest):
         session["matches"] = result.matches
     session["messages"].append({"role": "assistant", "content": result.reply})
     session["messages"] = session["messages"][-12:]
+    save_sessions(sessions)
 
     return ChatResponse(
         reply=result.reply,

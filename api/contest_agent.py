@@ -34,6 +34,7 @@ class ContestResult:
     reply: str
     problems: list[dict] | None = None
     intent: str = "general"
+    active_agent: str | None = None
 
 
 # ── Intent detection ──────────────────────────────────────────────────────────
@@ -56,6 +57,15 @@ _CONCEPT_WORDS = {
 _PRACTICE_WORDS = {
     "practice", "struggle", "weak", "bad at", "help with", "drill",
     "exercises", "problems for", "questions on", "study", "prepare",
+}
+
+_SWITCH_TO_GENERAL_WORDS = {
+    "general agent",
+    "switch to general",
+    "back to general",
+    "return to general",
+    "go to general",
+    "main agent",
 }
 
 _LIST_WORDS = {
@@ -141,6 +151,8 @@ def detect_intent(text: str) -> str:
         return "practice"
     if any(n.startswith(w) for w in _CONCEPT_WORDS) or any(w in n for w in ("what is", "what are")):
         return "concept"
+    if any(w in n for w in _SWITCH_TO_GENERAL_WORDS):
+        return "switch_general"
     return "search"
 
 
@@ -155,6 +167,28 @@ def _unavailable_reply() -> ContestResult:
             "Once indexed, I can answer questions, retrieve problems, and explain solutions."
         ),
         intent="not_indexed",
+    )
+
+
+def _switch_general_reply() -> ContestResult:
+    return ContestResult(
+        reply=(
+            "Switched back to the General agent.\n\n"
+            "You can ask me a mentor, booking, or general education question next."
+        ),
+        intent="switch_general",
+        active_agent="general",
+    )
+
+
+def _simple_small_talk_reply() -> ContestResult:
+    return ContestResult(
+        reply=(
+            "Hi. I can help with contest problems, explanations, or practice questions. "
+            "If you want to switch back, say 'back to general'."
+        ),
+        intent="small_talk",
+        active_agent="contest",
     )
 
 
@@ -485,6 +519,12 @@ class ContestAgent:
     """Drop-in agent for Waterloo contest math knowledge."""
 
     def run(self, message: str, session: dict[str, Any] | None = None) -> ContestResult:
+        if any(word in _norm(message) for word in _SWITCH_TO_GENERAL_WORDS):
+            return _switch_general_reply()
+
+        if len(_norm(message).split()) <= 4 and any(word in _norm(message) for word in {"hello", "hi", "hey", "thanks", "thank you", "ok", "okay", "what can you do"}):
+            return _simple_small_talk_reply()
+
         if collection_count() == 0:
             # Still allow concept questions even without indexed data
             intent = detect_intent(message)
