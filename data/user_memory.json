@@ -1,21 +1,27 @@
 {
-  "summary": "",
+  "summary": "User grade: 10; User interest: ap calculus; User program: bell high school; User goal: the university of waterloo; my name is emily; User name: Emily; my name is Emily",
   "facts": [
     "User grade: 10",
     "User interest: ap calculus",
-    "User name: Jordan"
+    "User program: bell high school",
+    "User goal: the university of waterloo",
+    "my name is emily",
+    "User name: Emily",
+    "my name is Emily"
   ],
   "examples": [
-    "[general] My name is Jordan and I am in grade 10. I like AP calculus. -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
-    "[general] What do you remember about me? -> You've asked me this question before. From what I recall, your name is Jordan And I Am, and you're in grade 10. You also mentioned an interest in AP calculus. Is there something specific you'd like to talk about or ask regarding AP calculus?",
-    "[general] What do you remember about me? -> You've asked me this question before. From what I recall, your name is Jordan, and you're in grade 10. You also mentioned an interest in AP calculus. Is there something specific you'd like to talk about or ask regarding AP calculus?",
-    "[general] hi -> Hi! How can I help you today?",
-    "[general] i want help with knowing if i should go to ib -> You've already mentioned that you're in the gifted program at Bell High School, and I provided some information about the IB program earlier. To help you decide, let's consider a few factors:\n\n1. **Your academic goals:** Do you want to pursue a challenging academic program that will prepare you for university-level work?\n2. **Your interests:** Are you interested in exploring global issues, languages, and cultures, which are key components of the IB program?\n3. **Your strengths:** Do you excel in critical thinking, problem-solving, and communication, which are highly valued skills in the IB program?\n4. **Your future plans:** Are you considering attending a university that values the IB Diploma, or do you have other academic or career goals in mind?\n\nReflecting on these factors will help you determine whether the IB program is a good fit for you. If you're still unsure, you could also consider speaking with your school counselor or IB coordinator to discuss your options.\n\nHow do you feel about these factors? Is there anything specific that's making you consider the IB program, or any concerns you have about it?",
-    "[general] yeah i want to go to the university of waterloo -> I'm built for education and Auxilium tasks only, so I can't help with that request. If you want, I can help with tutoring, school subjects, contest problems, or mentor matching.",
-    "[general] no im saying thats my goal so do i need ib to get there -> Being a high-achieving student in the gifted program at Bell High School, you're likely well-prepared for university-level work. While the University of Waterloo values a strong academic background, it's not necessarily a requirement to have completed the IB program to be accepted.\n\nHowever, having the IB Diploma can demonstrate your ability to handle a rigorous academic program, and it may give you an edge in the application process. Additionally, the IB program's emphasis on critical thinking, problem-solving, and global perspectives can align well with the University of Waterloo's values and academic programs.\n\nThat being said, it's not a definitive requirement, and many students from various academic backgrounds have been successful at the University of Waterloo. I would recommend speaking with your school counselor or an academic advisor at the University of Waterloo to get a better understanding of their specific requirements and expectations.\n\nIt's also worth noting that you're currently in grade 10, and you have a few years to decide on your academic path. You may want to consider exploring other academic options that align with your interests and goals, such as AP courses, dual enrollment programs, or other university prep courses.",
-    "[general] id like help with my assignment -> Can you please provide more context about the assignment? What subject is it for (e.g. math, science, language arts), what's the topic, and what specific help do you need (e.g. understanding a concept, completing a task, organizing your thoughts)? This will help me provide more tailored assistance.",
-    "[general] its a science worksheep about optics -> For a science worksheet about optics, I'd be happy to help you with any specific questions or concepts you're struggling with. Can you tell me a bit more about what you're working on? For example, are you trying to understand a particular concept, such as reflection, refraction, or diffraction? Or are you having trouble with a specific problem or question on the worksheet?\n\nAlso, since you're in grade 10, I'm assuming you're working with some basic concepts in optics. If you'd like, I can try to provide some general explanations or examples to help you understand the material. Just let me know how I can assist you!",
-    "[general] yeah id like to know how a convex lens is different from a concave lens -> I'm built for education and Auxilium tasks only, so I can't help with that request. If you want, I can help with tutoring, school subjects, contest problems, or mentor matching."
+    "[match] i want a mentor -> Switched to the Match agent.\n\nWhat grade is the mentee in?",
+    "[match] i want to look at contests -> What subject or skill do you want help with?",
+    "[match] i want a mentor -> What grade is the mentee in?",
+    "[match] i want to look at contests -> What grade is the mentee in?",
+    "[contest] i want to look at contests -> I'm built for education and Auxilium tasks only, so I can't help with that request. If you want, I can help with tutoring, school subjects, contest problems, or mentor matching.",
+    "[contest] i want to look at contests -> Switched to the Contest agent.\n\nAsk for a contest problem, a solution explanation, or say which contest you want to practice.",
+    "[match] i want to look at fcontests -> What subject or skill do you want help with?",
+    "[contest] contests -> Switched to the Contest agent.\n\nAsk for a contest problem, a solution explanation, or say which contest you want to practice.",
+    "[general] go back to general agent -> Switched back to the General agent.\n\nYou can ask me a mentor, booking, or general education question next.",
+    "[general] hi -> How can I help you today?",
+    "[general] who am i -> I'm built for education and Auxilium tasks only, so I can't help with that request. If you want, I can help with tutoring, school subjects, contest problems, or mentor matching.",
+    "[general] what school do i go to -> You mentioned earlier that you attend Bell High School. Is there anything else I can help you with?"
   ],
   "updated_at": "session_h9ssvcv"
 }

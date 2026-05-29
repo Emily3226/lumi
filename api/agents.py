@@ -170,7 +170,7 @@ def is_match_request(text: str) -> bool:
 
 def is_contest_request(text: str) -> bool:
     t = _normalize(text)
-    return bool(re.search(r"\bcontest\b|\bolympiad\b|\bcompetition\b|\bAMC\b|\bAIME\b|contest math|contest problems|practice contest", t))
+    return bool(re.search(r"\bcontest(s)?\b|\bolympiad\b|\bcompetition\b|\bAMC\b|\bAIME\b|contest math|contest problems|practice contest", t))
 
 
 def _token_set(text: str) -> set[str]:
@@ -306,7 +306,7 @@ EDUCATION_SCOPE_HINTS = {
     "bug",
     "issue",
     "feature",
-    "switch"
+    "switch",
     "university",
 }
 
@@ -406,9 +406,24 @@ def _is_simple_small_talk(message: str) -> bool:
     return False
 
 
+def _is_profile_intake(message: str) -> bool:
+    normalized = _normalize(message)
+    if not normalized:
+        return False
+
+    return bool(
+        re.search(
+            r"\b(my name is|call me|remember my name|remember that my name is|i am called|i'm called|i am in grade|i'm in grade|i am in the gifted program|i'm in the gifted program|i am in ap|i'm in ap|i am in ib|i'm in ib)\b",
+            normalized,
+        )
+    )
+
+
 def _is_in_scope_of_education(message: str) -> bool:
     normalized = _normalize(message)
-    if _is_simple_small_talk(message):
+    if _is_simple_small_talk(message) or _is_profile_intake(message):
+        return True
+    if is_contest_request(message):
         return True
     if normalized and any(hint in normalized for hint in CONVERSATIONAL_SCOPE_HINTS):
         return True
@@ -566,19 +581,21 @@ class MentorTaskAgents:
     def _intent_for(self, message: str, session: dict[str, Any], forced_agent: str | None = None) -> str:
         if is_agent_switch_request(message):
             return "general"
-        if forced_agent == "general":
-            return "general"
-        if forced_agent in {"booking", "match"}:
-            return "search"
-        if session.get("active_agent") == "match":
-            return "search"
         if is_restart_request(message):
+            return "general"
+        if is_contest_request(message):
             return "general"
         # If user asks "how do I book" or similar, treat it as a general question, not an actionable booking command
         if re.search(r"\bhow\b", message, re.I) and re.search(r"\bbook\b", message, re.I):
             return "general"
         if is_help_request(message) or is_list_request(message):
             return "general"
+        if forced_agent == "general":
+            return "general"
+        if forced_agent in {"booking", "match"}:
+            return "search"
+        if session.get("active_agent") == "match":
+            return "search"
         if is_booking_request(message, session):
             return "search"
         if is_match_request(message):
@@ -607,15 +624,18 @@ class MentorTaskAgents:
                     )
                     session["pending_match_step"] = "grade"
                 else:
+                    session["pending_match_step"] = None
+                    session["matches"] = []
+                    session["state"] = "idle"
                     reply = (
                         "Switched to the General agent.\n\n"
                         "You can ask me questions from the knowledge file or request another mode anytime."
                     )
                 return AgentResult(
                     reply=reply,
-                    state="awaiting_match_details" if target == "match" else session.get("state", "idle"),
+                    state="awaiting_match_details" if target == "match" else "idle",
                     active_agent=target,
-                    booking_state="needs_grade_and_subject" if target == "match" else session.get("state", "idle"),
+                    booking_state="needs_grade_and_subject" if target == "match" else "idle",
                 )
 
         if not _is_in_scope_of_education(message):

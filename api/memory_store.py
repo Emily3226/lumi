@@ -90,10 +90,19 @@ def _extract_facts_from_text(text: str) -> list[str]:
     patterns = [
         (r"\bi am in grade (\d{1,2})\b", "grade"),
         (r"\bi(?:'m| am) in grade (\d{1,2})\b", "grade"),
+        (r"\bi(?:'m| am) in the gifted program(?: at ([^.?!]{2,80}))?", "program"),
+        (r"\bi(?:'m| am) in ap\b(?: ([^.?!]{2,80}))?", "program"),
+        (r"\bi(?:'m| am) in ib\b(?: ([^.?!]{2,80}))?", "program"),
         (r"\bi like ([^.?!]{2,80})", "interest"),
         (r"\bi enjoy ([^.?!]{2,80})", "interest"),
         (r"\bmy favorite subject is ([^.?!]{2,80})", "preference"),
         (r"\bi attend ([^.?!]{2,80})", "school"),
+        (r"\bmy school is ([^.?!]{2,80})", "school"),
+        (r"\bi go to ([^.?!]{2,80})", "school"),
+        (r"\bmy goal is to ([^.?!]{2,120})", "goal"),
+        (r"\bi want to go to ([^.?!]{2,120})", "goal"),
+        (r"\bi want to study ([^.?!]{2,120})", "goal"),
+        (r"\bi am considering ([^.?!]{2,120})", "goal"),
         (r"\bremember that ([^.?!]{2,120})", "memory"),
         (r"\bplease remember that ([^.?!]{2,120})", "memory"),
     ]
@@ -121,6 +130,10 @@ def _extract_facts_from_text(text: str) -> list[str]:
             facts.append(f"User preference: {value}")
         elif label == "school":
             facts.append(f"User school: {value}")
+        elif label == "program":
+            facts.append(f"User program: {value or 'gifted/AP/IB'}")
+        elif label == "goal":
+            facts.append(f"User goal: {value}")
         else:
             facts.append(f"User asked to remember: {value}")
 
@@ -133,8 +146,12 @@ def _extract_facts_from_text(text: str) -> list[str]:
 def observe_turn(session_id: str, user_message: str, assistant_reply: str, agent: str | None = None) -> None:
     memory["updated_at"] = session_id
 
-    for fact in _extract_facts_from_text(user_message):
+    extracted_facts = _extract_facts_from_text(user_message)
+    for fact in extracted_facts:
         _add_fact(fact)
+
+    if extracted_facts:
+        memory["summary"] = "; ".join(str(item) for item in memory.get("facts", [])[-8:])
 
     if agent:
         _add_example(f"[{agent}] {user_message} -> {assistant_reply}")
