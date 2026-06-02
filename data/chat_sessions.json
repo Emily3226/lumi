@@ -86,46 +86,6 @@
     "messages": [
       {
         "role": "user",
-        "content": "when next cycle start?"
-      },
-      {
-        "role": "assistant",
-        "content": "I'm built for education and Auxilium tasks only, so I can't help with that request. If you want, I can help with tutoring, school subjects, contest problems, or mentor matching."
-      },
-      {
-        "role": "user",
-        "content": "when does cycle start"
-      },
-      {
-        "role": "assistant",
-        "content": "I'm built for education and Auxilium tasks only, so I can't help with that request. If you want, I can help with tutoring, school subjects, contest problems, or mentor matching."
-      },
-      {
-        "role": "user",
-        "content": "when does the cycle start"
-      },
-      {
-        "role": "assistant",
-        "content": "I'm built for education and Auxilium tasks only, so I can't help with that request. If you want, I can help with tutoring, school subjects, contest problems, or mentor matching."
-      },
-      {
-        "role": "user",
-        "content": "i want a mentor"
-      },
-      {
-        "role": "assistant",
-        "content": "Switched to the Match agent.\n\nWhat grade is the mentee in?"
-      },
-      {
-        "role": "user",
-        "content": "im in grade 10"
-      },
-      {
-        "role": "assistant",
-        "content": "What subject or skill do you want help with?"
-      },
-      {
-        "role": "user",
         "content": "hi"
       },
       {
@@ -243,6 +203,46 @@
       {
         "role": "assistant",
         "content": "Today's date is June 1, 2026."
+      },
+      {
+        "role": "user",
+        "content": "hi"
+      },
+      {
+        "role": "assistant",
+        "content": "Hello!"
+      },
+      {
+        "role": "user",
+        "content": "what is auxilium"
+      },
+      {
+        "role": "assistant",
+        "content": "Auxilium is a non-profit organization dedicated to supporting students by connecting them with dedicated mentors. We facilitate one-on-one mentorship pairings and host academic webinars to help students navigate their educational and personal development journeys."
+      },
+      {
+        "role": "user",
+        "content": "what is my name"
+      },
+      {
+        "role": "assistant",
+        "content": "You mentioned earlier that your name is Emily."
+      },
+      {
+        "role": "user",
+        "content": "what if i dont like my mentor"
+      },
+      {
+        "role": "assistant",
+        "content": "We want to ensure every mentorship experience is positive and productive. If you feel your current pairing isn't working out, you can reach out to our Mentorship Coordination team, and we will happily facilitate a new match."
+      },
+      {
+        "role": "user",
+        "content": "an how do i reach out to them"
+      },
+      {
+        "role": "assistant",
+        "content": "No prior formal experience is required! While previous teaching, tutoring, or leadership experience is a bonus, the most important qualities are empathy, strong communication skills, and a willingness to help a student succeed. We provide guidelines and resources to help you get started."
       }
     ]
   },

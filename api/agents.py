@@ -65,12 +65,17 @@ _load_dotenv_file()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip() or "llama-3.1-8b-instant"
-UNKNOWN_REQUEST_MESSAGE = (
-    "I’m not sure how to help with that yet. Try asking for a mentor match, a contest problem, or a question from the knowledge file."
+AUXILIUM_SUPPORT_EMAIL = "auxilium.mentorship@gmail.com"
+SUPPORT_HANDOFF_MESSAGE = (
+    f"I’m not sure how to help with that yet. If you want to reach the Auxilium coordinators, email {AUXILIUM_SUPPORT_EMAIL}. "
+    "You can also try asking for a mentor match, a contest problem, or a question from the knowledge file."
 )
 
+UNKNOWN_REQUEST_MESSAGE = SUPPORT_HANDOFF_MESSAGE
+
 GROQ_NOT_CONFIGURED_MESSAGE = (
-    "I can hand off to the AI fallback, but `GROQ_API_KEY` is not set yet. Put it in the repo root `.env` file and restart the backend."
+    f"I can hand off to the AI fallback, but `GROQ_API_KEY` is not set yet. If you need help now, email the Auxilium coordinators at {AUXILIUM_SUPPORT_EMAIL}. "
+    "Put `GROQ_API_KEY` in the repo root `.env` file and restart the backend to re-enable AI fallback."
 )
 
 

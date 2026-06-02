@@ -11,18 +11,18 @@
     "I am not quite understand , can u explan more"
   ],
   "examples": [
-    "[match] hi -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
-    "[general] hello -> It looks like we've had a few hellos. If you're ready to move forward, what subject or skill do you want help with?",
-    "[general] what is my name -> You mentioned earlier that your name is Emily. Is that correct?",
-    "[general] yes thank you -> I'm glad I could help clarify your name. If you're ready, let's get back to finding a mentor to help with math. I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
-    "[match] i dont want a mentor anymore -> Switched to the Match agent.\n\nWhat grade is the mentee in?",
     "[match] no -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
     "[general] what school do i go to -> You mentioned earlier that you're in grade 10, and I recall that you mentioned your school program is Bell High School. Is that correct?",
     "[general] yes -> So it seems you're confirming that you go to Bell High School. Is there anything else you'd like to discuss or ask about, such as a specific subject or your goals (like your goal to attend the University of Waterloo)?",
     "[general] yeah how do i get there -> You mentioned earlier that one of your goals is to attend the University of Waterloo. To get there, you'll need to consider your academic performance, especially in subjects like math and science, as they are often competitive programs. I'd be happy to help you explore your options and create a plan to achieve your goal.\n\nWould you like to discuss specific subjects, like math (you mentioned earlier you're interested in AP Calculus), or explore other resources that can help you prepare for university?",
     "[general] how do i get better at math -> To get better at math, especially for AP Calculus, here are some suggestions:\n\n1. **Practice consistently**: Regular practice helps build problem-solving skills and reinforces concepts. Try solving practice problems from your textbook, online resources, or math workbooks.\n2. **Understand the basics**: Make sure you have a strong foundation in algebra, geometry, and trigonometry. Review these topics if you feel uncertain.\n3. **Watch video tutorials**: Websites like Khan Academy, 3Blue1Brown, and Crash Course offer excellent video explanations and examples to supplement your learning.\n4. **Join a study group**: Collaborate with classmates to discuss challenging problems, share knowledge, and learn from one another.\n5. **Seek help when needed**: Don't hesitate to ask your teacher, tutor, or classmate for clarification on a concept you don't understand.\n6. **Use online resources**: Websites like Mathway, Wolfram Alpha, and Symbolab can help you check your work, visualize problems, and explore advanced topics.\n7. **Take online courses or tutorials**: Websites like Coursera, edX, and Udemy offer courses on various math topics, including AP Calculus.\n8. **Read ahead**: Stay ahead of the curriculum by reading your textbook and notes regularly, and exploring related topics on your own.\n\nRemember, improving math skills takes time and effort. Be patient, persistent, and kind to yourself as you work through challenging concepts.\n\nWould you like to discuss any specific math topics or resources that interest you?",
     "[general] when does the cycle start -> August 25, 2026",
-    "[general] what is today's date -> Today's date is June 1, 2026."
+    "[general] what is today's date -> Today's date is June 1, 2026.",
+    "[general] hi -> Hello!",
+    "[general] what is auxilium -> Auxilium is a non-profit organization dedicated to supporting students by connecting them with dedicated mentors. We facilitate one-on-one mentorship pairings and host academic webinars to help students navigate their educational and personal development journeys.",
+    "[general] what is my name -> You mentioned earlier that your name is Emily.",
+    "[general] what if i dont like my mentor -> We want to ensure every mentorship experience is positive and productive. If you feel your current pairing isn't working out, you can reach out to our Mentorship Coordination team, and we will happily facilitate a new match.",
+    "[general] an how do i reach out to them -> No prior formal experience is required! While previous teaching, tutoring, or leadership experience is a bonus, the most important qualities are empathy, strong communication skills, and a willingness to help a student succeed. We provide guidelines and resources to help you get started."
   ],
   "updated_at": "session_h9ssvcv"
 }
