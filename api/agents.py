@@ -98,6 +98,7 @@ def extract_grade(text: str) -> int | None:
         "ten": 10,
         "eleven": 11,
         "twelve": 12,
+        "universiy": 13
     }
     for key, value in grade_words.items():
         if key in t:
@@ -234,110 +235,6 @@ def _build_memory_context(session: dict[str, Any], limit: int = 24, max_chars: i
     return "\n\n".join(blocks)
 
 
-EDUCATION_SCOPE_HINTS = {
-    "school",
-    "class",
-    "classroom",
-    "course",
-    "program",
-    "programs",
-    "lesson",
-    "teacher",
-    "student",
-    "homework",
-    "assignment",
-    "worksheet",
-    "quiz",
-    "test",
-    "exam",
-    "notes",
-    "study",
-    "learn",
-    "tutor",
-    "mentor",
-    "math",
-    "science",
-    "biology",
-    "chemistry",
-    "physics",
-    "english",
-    "history",
-    "geography",
-    "computer science",
-    "programming",
-    "coding",
-    "calculus",
-    "algebra",
-    "geometry",
-    "trigonometry",
-    "essay",
-    "grammar",
-    "contest",
-    "practice",
-    "question",
-    "grade",
-    "ap",
-    "ap program",
-    "advanced placement",
-    "ib",
-    "ib program",
-    "international baccalaureate",
-    "pre-ib",
-    "pre ib",
-    "dp",
-    "myp",
-    "cp",
-    "school work",
-    "school-related",
-    "auxilium",
-    "app",
-    "account",
-    "login",
-    "profile",
-    "settings",
-    "agent",
-    "mode",
-    "memory",
-    "booking",
-    "session",
-    "support",
-    "help",
-    "feedback",
-    "bug",
-    "issue",
-    "feature",
-    "switch",
-    "university",
-}
-
-CONVERSATIONAL_SCOPE_HINTS = {
-    "hello",
-    "hi",
-    "hey",
-    "thanks",
-    "thank you",
-    "good morning",
-    "good afternoon",
-    "good evening",
-    "how are you",
-    "what can you do",
-    "tell me",
-    "can you",
-    "could you",
-    "what do you think",
-    "chat",
-    "conversation",
-    "remember",
-    "recall",
-    "what do you remember",
-    "memory",
-    "opinion",
-    "joke",
-    "story",
-    "random",
-    "casual",
-}
-
 SIMPLE_SMALL_TALK_HINTS = {
     "hello",
     "hi",
@@ -386,11 +283,6 @@ MATCH_QUERY_HINT_WORDS = {
     "grammar",
 }
 
-OUT_OF_SCOPE_MESSAGE = (
-    "I'm built for education and Auxilium tasks only, so I can't help with that request. "
-    "If you want, I can help with tutoring, school subjects, contest problems, or mentor matching."
-)
-
 
 def _is_simple_small_talk(message: str) -> bool:
     normalized = _normalize(message)
@@ -404,34 +296,6 @@ def _is_simple_small_talk(message: str) -> bool:
         return True
 
     return False
-
-
-def _is_profile_intake(message: str) -> bool:
-    normalized = _normalize(message)
-    if not normalized:
-        return False
-
-    return bool(
-        re.search(
-            r"\b(my name is|call me|remember my name|remember that my name is|i am called|i'm called|i am in grade|i'm in grade|i am in the gifted program|i'm in the gifted program|i am in ap|i'm in ap|i am in ib|i'm in ib)\b",
-            normalized,
-        )
-    )
-
-
-def _is_in_scope_of_education(message: str) -> bool:
-    normalized = _normalize(message)
-    if _is_simple_small_talk(message) or _is_profile_intake(message):
-        return True
-    if is_contest_request(message):
-        return True
-    if normalized and any(hint in normalized for hint in CONVERSATIONAL_SCOPE_HINTS):
-        return True
-    if normalized and re.search(r"\b(what is|what are|how does|how do|why is|why are|define|definition|explain|tell me about)\b", normalized):
-        return True
-    if _is_date_or_time_question(message) or _is_transformation_request(message):
-        return True
-    return _contains_any(_token_set(message), EDUCATION_SCOPE_HINTS)
 
 
 def _load_general_knowledge_entries() -> list[dict[str, str]]:
@@ -638,14 +502,6 @@ class MentorTaskAgents:
                     booking_state="needs_grade_and_subject" if target == "match" else "idle",
                 )
 
-        if not _is_in_scope_of_education(message):
-            return AgentResult(
-                reply=OUT_OF_SCOPE_MESSAGE,
-                state=session.get("state", "idle"),
-                booking_state=session.get("state", "idle"),
-                active_agent=session.get("active_agent", "general"),
-            )
-
         if is_restart_request(message):
             session.clear()
             session.update({"state": "idle", "subject": None, "grade": None, "name": None, "matches": [], "active_agent": "general", "pending_match_step": None})
@@ -782,13 +638,13 @@ class MentorTaskAgents:
             memory_context = f"Use the following conversation memory when answering.\n{memory_context}\n\n"
 
         prompt = (
-            f"You are Lumi's general fallback agent. {date_context}"
+            f"You are Lumi's general fallback agent for education and Auxilium support. {date_context}"
             f"{memory_context}"
-            "The local knowledge file did not contain an answer for this question."
-            " Provide a concise, helpful reply to the user's question using any recent conversation context supplied. "
-            "Do not refuse to answer; if uncertain, give a best-effort response and indicate uncertainty clearly. "
-            "Do not perform mentor-matching or contest problem solving unless the user explicitly requests switching modes. "
-            "For casual messages like greetings, respond briefly and ask how you can help."
+            "Use this assistant for school subjects, tutoring, contest problems, mentor matching, and Auxilium app help. "
+            "If the user is asking for casual conversation, greetings, or profile-related updates, answer briefly and naturally. "
+            "If the user asks something outside education or Auxilium, politely decline and redirect them back to tutoring, school, contests, mentor matching, or app support. "
+            "The local knowledge file did not contain an answer for this question. Provide a concise, helpful reply using any recent conversation context supplied. "
+            "If uncertain, give a best-effort response and say so clearly."
         )
         groq_api_key = _groq_api_key()
         if not groq_api_key:
