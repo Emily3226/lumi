@@ -103,7 +103,7 @@ def send_booking_confirmation(
     message["Subject"] = "Auxilium Mentorship - Booking Confirmation"
     message["From"] = gmail_user
     message["To"] = mentee_email
-    message["Cc"] = AUXILIUM_SUPPORT_EMAIL
+    # message["Cc"] = AUXILIUM_SUPPORT_EMAIL
 
     body = (
         f"Hi {mentee_name},\n\n"
