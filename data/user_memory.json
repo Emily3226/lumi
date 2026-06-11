@@ -11,18 +11,18 @@
     "User name: Emily"
   ],
   "examples": [
+    "[match] 9 -> I found 1 match. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
+    "[match] i want a math mentor -> Switched to the Match agent.\n\nWhat grade is the mentee in?",
+    "[match] 9 -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
+    "[match] but you didnt ask what grade im in -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
+    "[match] book 1 -> What is In's email address so I can send the booking confirmation?",
+    "[match] ezhan322@gmail.com -> Here's a summary of the booking:\n\nMentee: In\nMentee email: ezhan322@gmail.com\nGrade: 9\nSubject: math\nMentor: Maya Patel (Grade 11)\n\nIs this correct? (yes/no)",
+    "[match] no -> No problem - let's try again. What grade is the mentee in?",
+    "[match] science -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
     "[match] book 1 -> What is the mentee's name so I can save the booking?",
-    "[match] bob -> Booked!\n\nBob -> Ava Martinez\nmath - Grade 10 -> Grade 11",
-    "[match] bring me back to general -> What grade is the mentee in?",
-    "[general] who am i -> Based on our conversation, you are a 10th-grade student who needs help with math.",
-    "[general] what is my name -> Your name is Emily.",
-    "[general] what is auxilium -> Auxilium is a non-profit organization dedicated to supporting students by connecting them with dedicated mentors. We facilitate one-on-one mentorship pairings and host academic webinars to help students navigate their educational and personal development journeys.",
-    "[match] im a tenth grade student at merivale high school in the ib program -> What grade is the mentee in?",
-    "[general] im a tenth grade student at merivale high school in the ib program -> It seems like you've mentioned your school and program a few times. Since you're a 10th-grade student at Merivale High School in the IB program, I'd like to know what subject or skill you'd like help with. Is it a specific IB subject, like math, science, or language, or perhaps something else?",
-    "[general] what is my name and school -> Based on our conversation, your name is Emily and your school is Bell High School, not Merivale High School (which you mentioned earlier in the IB program). If you'd like to correct your school, please let me know.\n\nAlso, I noticed you're in the 10th grade and interested in AP Calculus, and your goal is to attend the University of Waterloo. Is there anything specific you'd like to discuss or work on?",
-    "[general] hi -> It seems like we've said hello a couple of times. Is there something specific you'd like to talk about or ask for help with, like a math problem or something related to school?",
-    "[general] who am i -> Based on our conversation, you are a 10th-grade student who needs help with math. Your name is Emily, and your goal is to attend the University of Waterloo, where you're interested in studying AP Calculus.",
-    "[match] i want a mentor -> Switched to the Match agent.\n\nWhat grade is the mentee in?"
+    "[match] bob -> Thanks, Bob. What is the mentee's email address so I can send the booking confirmation?",
+    "[match] ezhan322@gmail.com -> Here's a summary of the booking:\n\nMentee: Bob\nMentee email: ezhan322@gmail.com\nGrade: 9\nSubject: science\nMentor: Sofia Chen (Grade 10)\n\nIs this correct? (yes/no)",
+    "[general] yes -> Booked!\n\nBob -> Sofia Chen\nscience - Grade 9 -> Grade 10\n\nA confirmation email has been sent to ezhan322@gmail.com.\n\nIs there anything else I can help you with?"
   ],
-  "updated_at": "session_h9ssvcv"
+  "updated_at": "session_ged24bv"
 }

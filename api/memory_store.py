@@ -52,6 +52,18 @@ def save_memory() -> None:
     temp_path.replace(MEMORY_STORE_PATH)
 
 
+def clear_session_memory() -> None:
+    """Reset the persistent memory store to its defaults.
+
+    Intended to be called whenever a brand-new conversation/session starts,
+    so facts, summaries, and examples from a previous user/session don't leak
+    into a new one.
+    """
+    global memory
+    memory = _default_memory()
+    save_memory()
+
+
 def _add_fact(fact: str) -> None:
     fact = fact.strip()
     if not fact:

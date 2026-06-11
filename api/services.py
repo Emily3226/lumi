@@ -98,6 +98,8 @@ def init_db() -> None:
     cols = [r[1] for r in conn.execute("PRAGMA table_info(bookings)").fetchall()]
     if "status" not in cols:
         conn.execute("ALTER TABLE bookings ADD COLUMN status TEXT DEFAULT 'active'")
+    if "mentee_email" not in cols:
+        conn.execute("ALTER TABLE bookings ADD COLUMN mentee_email TEXT")
 
     conn.commit()
     conn.close()
@@ -231,6 +233,7 @@ def book_pairing_in_db(
     mentee_grade: int,
     match_score: float,
     explanation: str,
+    mentee_email: str = "",
 ) -> None:
     conn = get_db()
     cur = conn.execute("SELECT available FROM mentors WHERE name = ?", (mentor_name,))
@@ -245,8 +248,8 @@ def book_pairing_in_db(
     conn.execute(
         """
         INSERT INTO bookings
-          (mentor_name, mentee_name, subject, mentor_grade, mentee_grade, match_score, explanation, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'active')
+          (mentor_name, mentee_name, subject, mentor_grade, mentee_grade, match_score, explanation, status, mentee_email)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?)
         """,
         (
             mentor_name,
@@ -256,6 +259,7 @@ def book_pairing_in_db(
             mentee_grade,
             match_score,
             explanation,
+            mentee_email,
         ),
     )
     conn.execute("UPDATE mentors SET available = 0 WHERE name = ?", (mentor_name,))

@@ -19,6 +19,8 @@ from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
+from rag.subject_utils import subject_matches
+
 
 def get_db_path() -> str:
     return os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "training.db")
@@ -32,19 +34,24 @@ def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     return row is not None
 
 
-def _split_subjects(value: str | None) -> list[str]:
-    if not value:
-        return []
-    parts = [item.strip().lower() for item in value.replace(";", ",").split(",")]
-    return [item for item in parts if item]
+def _subject_match_feature(mentor_subjects: str | None, mentee_subjects: str | None) -> float:
+    """Compute the subject-match feature the same way inference does.
 
+    IMPORTANT: this must stay in sync with `_ml_score` in models/inference.py,
+    which computes:
 
-def _subject_overlap(mentor_subjects: str | None, mentee_subjects: str | None) -> float:
-    mentor_set = set(_split_subjects(mentor_subjects))
-    mentee_set = set(_split_subjects(mentee_subjects))
-    if not mentor_set or not mentee_set:
-        return 0.0
-    return 1.0 if mentor_set.intersection(mentee_set) else 0.0
+        subject_match = 1.0 if subject_matches(mentor_subject, mentee_subject) else 0.5
+
+    Previously this trained on a strict 0.0/1.0 overlap of raw, uncanonicalized
+    subject strings (e.g. "Calculus" vs "Math" never matched), while inference
+    fed the StandardScaler values of 1.0 or 0.5 using `subject_matches`, which
+    canonicalizes subjects via `subject_key` and recognizes aliases/related
+    science subjects. That mismatch meant the scaler/model were trained on a
+    feature distribution ({0.0, 1.0}) that almost never occurs at inference
+    time ({0.5, 1.0}), which degraded the quality of the trained match scores.
+    Using the exact same function here fixes that distribution mismatch.
+    """
+    return 1.0 if subject_matches(mentor_subjects, mentee_subjects) else 0.5
 
 
 def _load_from_historical_pairings(conn: sqlite3.Connection) -> Tuple[np.ndarray, np.ndarray] | Tuple[None, None]:
@@ -69,7 +76,7 @@ def _load_from_historical_pairings(conn: sqlite3.Connection) -> Tuple[np.ndarray
         mentor_grade = float(row["mentor_grade"] or 0)
         mentee_grade = float(row["mentee_grade"] or 0)
         grade_gap = float(row["grade_gap"] if row["grade_gap"] is not None else abs(mentor_grade - mentee_grade))
-        subject_match = _subject_overlap(row["mentor_subjects"], row["mentee_subjects"])
+        subject_match = _subject_match_feature(row["mentor_subjects"], row["mentee_subjects"])
         senior_bonus = 1.0 if mentor_grade > mentee_grade else 0.0
         grade_similarity = max(0.0, 1.0 - (grade_gap / 4.0))
 
@@ -142,8 +149,15 @@ def train_model() -> Optional[dict]:
         },
     }
 
+    # NOTE: the previous "keep existing model if its validation MAE is lower"
+    # comparison is no longer a fair comparison once the feature definition
+    # changes (the existing model was trained on the OLD subject_match feature
+    # distribution). When retraining after this fix, force-replace the
+    # existing model so it is trained on the corrected features.
+    force_replace = os.environ.get("FORCE_RETRAIN", "1") == "1"
+
     best_bundle = None
-    if os.path.exists(model_path):
+    if not force_replace and os.path.exists(model_path):
         try:
             existing = joblib.load(model_path)
             if isinstance(existing, dict) and existing.get("scaler") is not None and existing.get("model") is not None:
