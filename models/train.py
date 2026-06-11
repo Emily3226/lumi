@@ -15,6 +15,8 @@ from typing import Optional, Tuple
 import joblib
 import numpy as np
 from sklearn.ensemble import GradientBoostingRegressor
+from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 
@@ -98,14 +100,17 @@ def train_model() -> Optional[dict]:
     print("Loading training data...")
     X, y = load_training_data()
 
-    if X is None or len(X) < 2:
-        print("⚠ Insufficient training data (need at least 2 samples). Using heuristic fallback.")
+    if X is None or len(X) < 8:
+        print("⚠ Insufficient training data (need at least 8 samples for validation). Using heuristic fallback.")
         return None
 
     print(f"Training on {len(X)} pairing examples...")
 
+    X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+
     scaler = StandardScaler()
-    X_scaled = scaler.fit_transform(X)
+    X_train_scaled = scaler.fit_transform(X_train)
+    X_val_scaled = scaler.transform(X_val)
 
     model = GradientBoostingRegressor(
         n_estimators=80,
@@ -113,17 +118,58 @@ def train_model() -> Optional[dict]:
         max_depth=3,
         random_state=42,
     )
-    model.fit(X_scaled, y)
+    model.fit(X_train_scaled, y_train)
+
+    y_train_pred = model.predict(X_train_scaled)
+    y_val_pred = model.predict(X_val_scaled)
+
+    train_r2 = r2_score(y_train, y_train_pred)
+    val_r2 = r2_score(y_val, y_val_pred)
+    train_mae = mean_absolute_error(y_train, y_train_pred)
+    val_mae = mean_absolute_error(y_val, y_val_pred)
 
     model_path = os.path.join(os.path.dirname(__file__), "mentor_matcher.pkl")
-    joblib.dump({"scaler": scaler, "model": model}, model_path)
+    candidate_bundle = {
+        "scaler": scaler,
+        "model": model,
+        "metrics": {
+            "train_r2": float(train_r2),
+            "val_r2": float(val_r2),
+            "train_mae": float(train_mae),
+            "val_mae": float(val_mae),
+            "train_samples": int(len(X_train)),
+            "val_samples": int(len(X_val)),
+        },
+    }
 
-    train_r2 = model.score(X_scaled, y)
+    best_bundle = None
+    if os.path.exists(model_path):
+        try:
+            existing = joblib.load(model_path)
+            if isinstance(existing, dict) and existing.get("scaler") is not None and existing.get("model") is not None:
+                existing_val_pred = existing["model"].predict(existing["scaler"].transform(X_val))
+                existing_val_mae = mean_absolute_error(y_val, existing_val_pred)
+                existing_val_r2 = r2_score(y_val, existing_val_pred)
+                # Prefer lower validation MAE; use validation R2 as tie-breaker.
+                if (existing_val_mae < val_mae) or (abs(existing_val_mae - val_mae) < 1e-9 and existing_val_r2 >= val_r2):
+                    best_bundle = existing
+                    print("Keeping existing model: better validation performance.")
+                    print(f"  Existing val MAE: {existing_val_mae:.4f}, val R²: {existing_val_r2:.4f}")
+                    print(f"  Candidate val MAE: {val_mae:.4f}, val R²: {val_r2:.4f}")
+        except Exception:
+            pass
+
+    if best_bundle is None:
+        joblib.dump(candidate_bundle, model_path)
+        best_bundle = candidate_bundle
+        print("Saved new model based on validation performance.")
+
     print("✓ Model trained successfully!")
-    print(f"  Training R² score: {train_r2:.3f}")
+    print(f"  Train R²: {train_r2:.3f} | Val R²: {val_r2:.3f}")
+    print(f"  Train MAE: {train_mae:.3f} | Val MAE: {val_mae:.3f}")
     print(f"  Model saved to: {model_path}")
 
-    return {"scaler": scaler, "model": model}
+    return best_bundle
 
 
 if __name__ == "__main__":

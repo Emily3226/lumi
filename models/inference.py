@@ -52,6 +52,7 @@ SIMILARITY_WEIGHT = 0.05
 # Post-score adjustments
 SUBJECT_MISMATCH_PENALTY = 0.7  # multiply score when subject_hint exists but mentor != subject
 SUBJECT_MATCH_BOOST = 0.03      # additive boost when subject matches
+BELOW_GRADE_PENALTY = 0.55      # multiply score when mentor grade is below mentee grade
 
 
 def _ml_score(mentee: dict, mentor: dict, trained_model: dict) -> float:
@@ -130,6 +131,13 @@ def score_candidates(mentee: dict, candidates: list[dict], strict: bool = False)
         # Prepare explanation reasons and post-process to favor exact subject matches
         reasons = []
         has_subject_hint = bool((mentee.get("subject_hint") or "").strip())
+        mentee_grade_val = int(mentee.get("grade", 0) or 0)
+        mentor_grade_val = int(mentor.get("grade", 0) or 0)
+
+        if mentee_grade_val > 0 and mentor_grade_val > 0 and mentor_grade_val < mentee_grade_val:
+            score = score * BELOW_GRADE_PENALTY
+            reasons.append("(lowered because mentor is below mentee grade)")
+
         if has_subject_hint and not subject_matches(mentor.get("subject"), mentee.get("subject_hint") or mentee.get("subject")):
             score = score * SUBJECT_MISMATCH_PENALTY
             reasons.append("(lowered for not matching mentee subject)")

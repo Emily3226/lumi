@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 from models.inference import score_candidates
 from rag.retriever import MentorRetriever
 from rag.langchain_matcher import rank_candidates_langchain
-from rag.subject_utils import expand_query_text, subject_key
+from rag.subject_utils import expand_query_text, subject_key, subject_matches
 from models.inference import trained_model_available
 
 
@@ -21,6 +21,8 @@ DB_PATH = os.path.join(ROOT_DIR, "data", "lumi.db")
 
 
 retriever = MentorRetriever()
+MIN_MATCH_SCORE = 0.35
+MAX_ALLOWED_BELOW_GRADE = 1
 
 
 def get_db() -> sqlite3.Connection:
@@ -145,17 +147,39 @@ def match_mentors(
         strict = trained_model_available()
         ranked = score_candidates(mentee, candidates, strict=strict)
 
+    def _passes_hard_filters(item: dict) -> bool:
+        mentor_grade = int(item.get("grade") or 0)
+        if grade_value > 0 and mentor_grade > 0 and mentor_grade < grade_value - MAX_ALLOWED_BELOW_GRADE:
+            return False
+        if subject_hint and not subject_matches(item.get("subject"), subject_hint):
+            return False
+        return True
+
+    hard_filtered = [item for item in ranked if _passes_hard_filters(item)]
+    if hard_filtered:
+        ranked = hard_filtered
+
     # If the mentee provided a subject hint, ensure subject-matching mentors are prioritized
     if subject_hint:
         def _subject_priority(item):
             try:
                 from rag.subject_utils import subject_matches as _sm
+                mentor_grade = int(item.get("grade") or 0)
+                grade_gap = abs(mentor_grade - grade_value) if grade_value > 0 and mentor_grade > 0 else 99
+                below_mentee = 1 if grade_value > 0 and mentor_grade > 0 and mentor_grade < grade_value else 0
 
-                return (0 if _sm(item.get("subject"), subject_hint) else 1, -item.get("match_score", 0.0))
+                return (
+                    0 if _sm(item.get("subject"), subject_hint) else 1,
+                    below_mentee,
+                    grade_gap,
+                    -item.get("match_score", 0.0),
+                )
             except Exception:
                 return (1, -item.get("match_score", 0.0))
 
         ranked.sort(key=_subject_priority)
+
+    ranked = [item for item in ranked if float(item.get("match_score", 0.0)) >= MIN_MATCH_SCORE]
 
     return mentee, ranked
 

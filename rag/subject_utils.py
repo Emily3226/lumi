@@ -6,7 +6,17 @@ from typing import Optional
 
 
 SUBJECT_ALIASES: dict[str, tuple[str, ...]] = {
+    "science": (
+        "general science",
+        "natural science",
+        "scientific",
+        "sciences",
+        "stem science",
+    ),
     "math": (
+        "maths",
+        "maths problem",
+        "calc",
         "mathematics",
         "algebra",
         "calculus",
@@ -17,6 +27,7 @@ SUBJECT_ALIASES: dict[str, tuple[str, ...]] = {
         "number theory",
     ),
     "physics": (
+        "phys",
         "mechanics",
         "motion",
         "forces",
@@ -26,6 +37,7 @@ SUBJECT_ALIASES: dict[str, tuple[str, ...]] = {
         "relativity",
     ),
     "chemistry": (
+        "chem",
         "lab",
         "reaction",
         "reactions",
@@ -35,6 +47,7 @@ SUBJECT_ALIASES: dict[str, tuple[str, ...]] = {
         "molecules",
     ),
     "biology": (
+        "bio",
         "life science",
         "living things",
         "cells",
@@ -44,6 +57,7 @@ SUBJECT_ALIASES: dict[str, tuple[str, ...]] = {
         "human body",
     ),
     "english": (
+        "eng",
         "writing",
         "essay",
         "essays",
@@ -55,8 +69,11 @@ SUBJECT_ALIASES: dict[str, tuple[str, ...]] = {
     ),
 }
 
+SCIENCE_SUBJECTS = {"science", "physics", "chemistry", "biology"}
+
 # Additional keywords that don't neatly fit into aliases but indicate subjects
 SUBJECT_KEYWORDS: dict[str, str] = {
+    "science": "science",
     # math-related terms
     "deriv": "math",
     "derivative": "math",
@@ -103,7 +120,14 @@ def subject_label(value: str | None) -> Optional[str]:
 def subject_matches(left: str | None, right: str | None) -> bool:
     left_key = subject_key(left) or _normalize_text(left)
     right_key = subject_key(right) or _normalize_text(right)
-    return bool(left_key and right_key and left_key == right_key)
+    if not (left_key and right_key):
+        return False
+    if left_key == right_key:
+        return True
+    # Allow generic "science" requests to match concrete science subjects.
+    if left_key in SCIENCE_SUBJECTS and right_key in SCIENCE_SUBJECTS:
+        return left_key == "science" or right_key == "science"
+    return False
 
 
 def expand_query_text(value: str | None) -> str:
