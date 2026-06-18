@@ -79,6 +79,7 @@ def send_booking_confirmation(
     mentor_name: str,
     subject: str,
     grade: int,
+    slot_label: str = "",
 ) -> bool:
     """Send a booking confirmation email to the mentee, CC'd to Auxilium coordinators.
 
@@ -103,17 +104,20 @@ def send_booking_confirmation(
     message["Subject"] = "Auxilium Mentorship - Booking Confirmation"
     message["From"] = gmail_user
     message["To"] = mentee_email
-    # message["Cc"] = AUXILIUM_SUPPORT_EMAIL
+
+    slot_line = f"Weekly session: {slot_label}\n" if slot_label else ""
 
     body = (
         f"Hi {mentee_name},\n\n"
         "Your Auxilium mentorship pairing has been confirmed!\n\n"
-        f"Mentee: {mentee_name}\n"
-        f"Mentor: {mentor_name}\n"
-        f"Subject: {subject}\n"
-        f"Mentee grade: {grade}\n\n"
+        f"  Mentee:          {mentee_name}\n"
+        f"  Mentor:          {mentor_name}\n"
+        f"  Subject:         {subject}\n"
+        f"  Mentee grade:    {grade}\n"
+        f"  {slot_line}"
+        "\n"
         "The Auxilium coordinators have been copied on this email and will follow up "
-        "with next steps and scheduling details.\n\n"
+        "with any additional details.\n\n"
         f"If you have any questions, reach out to {AUXILIUM_SUPPORT_EMAIL}.\n\n"
         "- The Auxilium Mentorship Team"
     )

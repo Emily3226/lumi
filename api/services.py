@@ -71,6 +71,39 @@ def init_db() -> None:
         """
     )
 
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS mentor_timeslots (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            mentor_name  TEXT NOT NULL,
+            day_of_week  TEXT NOT NULL,
+            start_time   TEXT NOT NULL,
+            end_time     TEXT NOT NULL,
+            is_booked    INTEGER DEFAULT 0,
+            FOREIGN KEY (mentor_name) REFERENCES mentors(name)
+        )
+        """
+    )
+
+    # Migrate old schema: if slot_date column exists but day_of_week does not,
+    # drop and recreate the table cleanly.
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(mentor_timeslots)").fetchall()]
+    if "slot_date" in cols and "day_of_week" not in cols:
+        conn.execute("DROP TABLE mentor_timeslots")
+        conn.execute(
+            """
+            CREATE TABLE mentor_timeslots (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                mentor_name  TEXT NOT NULL,
+                day_of_week  TEXT NOT NULL,
+                start_time   TEXT NOT NULL,
+                end_time     TEXT NOT NULL,
+                is_booked    INTEGER DEFAULT 0,
+                FOREIGN KEY (mentor_name) REFERENCES mentors(name)
+            )
+            """
+        )
+
     cur = conn.execute("SELECT COUNT(1) as c FROM mentors")
     if cur.fetchone()[0] == 0:
         csv_path = os.path.join(ROOT_DIR, "data", "pairings.csv")
@@ -234,6 +267,7 @@ def book_pairing_in_db(
     match_score: float,
     explanation: str,
     mentee_email: str = "",
+    slot_id: int | None = None,
 ) -> None:
     conn = get_db()
     cur = conn.execute("SELECT available FROM mentors WHERE name = ?", (mentor_name,))
@@ -245,6 +279,18 @@ def book_pairing_in_db(
         conn.close()
         raise ValueError("Mentor already booked")
 
+    # Validate slot belongs to mentor and is still free
+    if slot_id is not None:
+        slot_row = conn.execute(
+            "SELECT id, is_booked FROM mentor_timeslots WHERE id = ? AND mentor_name = ?",
+            (slot_id, mentor_name),
+        ).fetchone()
+        if not slot_row:
+            conn.close()
+            raise ValueError("Time slot not found for this mentor")
+        if slot_row["is_booked"]:
+            conn.close()
+            raise ValueError("That time slot is already taken")
     conn.execute(
         """
         INSERT INTO bookings
@@ -263,9 +309,85 @@ def book_pairing_in_db(
         ),
     )
     conn.execute("UPDATE mentors SET available = 0 WHERE name = ?", (mentor_name,))
+    if slot_id is not None:
+        conn.execute("UPDATE mentor_timeslots SET is_booked = 1 WHERE id = ?", (slot_id,))
     conn.execute(
         "INSERT OR IGNORE INTO mentees (name, grade, subject) VALUES (?, ?, ?)",
         (mentee_name, mentee_grade, subject),
     )
     conn.commit()
     conn.close()
+
+
+# ── Time slot helpers ─────────────────────────────────────────────────────────
+
+def get_mentor_slots(mentor_name: str, only_available: bool = True) -> list[dict]:
+    """Return weekly time slots for a mentor, optionally filtered to only free ones."""
+    DAYS_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    conn = get_db()
+    if only_available:
+        rows = conn.execute(
+            """
+            SELECT id, mentor_name, day_of_week, start_time, end_time, is_booked
+            FROM mentor_timeslots
+            WHERE mentor_name = ? AND is_booked = 0
+            ORDER BY start_time
+            """,
+            (mentor_name,),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT id, mentor_name, day_of_week, start_time, end_time, is_booked
+            FROM mentor_timeslots
+            WHERE mentor_name = ?
+            ORDER BY start_time
+            """,
+            (mentor_name,),
+        ).fetchall()
+    conn.close()
+    results = [dict(r) for r in rows]
+    results.sort(key=lambda r: (DAYS_ORDER.index(r["day_of_week"]) if r["day_of_week"] in DAYS_ORDER else 99, r["start_time"]))
+    return results
+
+
+def add_mentor_slot(mentor_name: str, day_of_week: str, start_time: str) -> dict:
+    """Add a recurring weekly 1-hour slot for a mentor.
+    day_of_week: e.g. 'Monday', start_time: 'HH:MM' (24-hour)."""
+    from datetime import datetime, timedelta
+
+    VALID_DAYS = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
+    if day_of_week not in VALID_DAYS:
+        raise ValueError(f"day_of_week must be one of {sorted(VALID_DAYS)}")
+
+    start_dt = datetime.strptime(start_time, "%H:%M")
+    end_dt = start_dt + timedelta(hours=1)
+    end_time = end_dt.strftime("%H:%M")
+
+    conn = get_db()
+    mentor_row = conn.execute("SELECT name FROM mentors WHERE name = ?", (mentor_name,)).fetchone()
+    if not mentor_row:
+        conn.close()
+        raise ValueError("Mentor not found")
+
+    conn.execute(
+        "INSERT INTO mentor_timeslots (mentor_name, day_of_week, start_time, end_time, is_booked) VALUES (?, ?, ?, ?, 0)",
+        (mentor_name, day_of_week, start_time, end_time),
+    )
+    conn.commit()
+    slot_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    conn.close()
+    return {"id": slot_id, "mentor_name": mentor_name, "day_of_week": day_of_week, "start_time": start_time, "end_time": end_time, "is_booked": False}
+
+
+def delete_mentor_slot(slot_id: int) -> bool:
+    """Delete a time slot by id. Returns True if deleted, False if not found."""
+    conn = get_db()
+    row = conn.execute("SELECT id FROM mentor_timeslots WHERE id = ?", (slot_id,)).fetchone()
+    if not row:
+        conn.close()
+        return False
+    conn.execute("DELETE FROM mentor_timeslots WHERE id = ?", (slot_id,))
+    conn.commit()
+    conn.close()
+    return True

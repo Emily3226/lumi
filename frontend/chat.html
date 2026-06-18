@@ -89,6 +89,29 @@
       .contest-chip{font-size:12px;padding:5px 11px;border-radius:999px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;cursor:pointer;font-weight:500}
       .contest-chip:hover{background:#ffedd5}
 
+      /* Slot picker — weekly calendar grid */
+      .slot-picker{margin-top:12px;padding:12px;border-radius:12px;background:#f0f9ff;border:1px solid #bae6fd}
+      .slot-picker-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+      .slot-picker-title{font-size:12px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.06em}
+      .slot-close-btn{font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid #bae6fd;background:#e0f2fe;color:#0369a1;cursor:pointer}
+      .slot-close-btn:hover{background:#bae6fd}
+
+      /* Calendar table */
+      .cal-wrap{overflow-x:auto}
+      .cal-table{width:100%;border-collapse:collapse;min-width:480px;font-size:12px}
+      .cal-table th{background:#0369a1;color:#fff;padding:6px 4px;text-align:center;font-weight:600;white-space:nowrap}
+      .cal-table th.time-col{background:#1e40af;width:52px}
+      .cal-table td{border:1px solid #e0f2fe;padding:3px;vertical-align:top;min-width:70px;height:32px}
+      .cal-table td.time-label{background:#f0f9ff;color:#0369a1;font-weight:600;text-align:right;padding:4px 6px;white-space:nowrap;font-size:11px}
+      .cal-table tr:nth-child(even) td{background:#f8fcff}
+      .cal-table tr:nth-child(even) td.time-label{background:#e8f4ff}
+
+      /* Slot cell button */
+      .slot-cell-btn{width:100%;padding:5px 3px;border-radius:6px;border:1px solid #7dd3fc;background:#e0f2fe;color:#0c4a6e;font-size:11px;font-weight:600;cursor:pointer;text-align:center;line-height:1.2;transition:background 0.12s}
+      .slot-cell-btn:hover{background:#7dd3fc;color:#0c4a6e}
+      .slot-cell-btn.selected{background:#0369a1;color:#fff;border-color:#0369a1}
+      .slot-loading{font-size:13px;color:#0369a1;padding:6px 0;text-align:center}
+
       /* Composer */
       .composer{display:flex;gap:10px;margin-top:12px}
       textarea{flex:1;min-height:60px;border-radius:10px;padding:10px;border:1px solid rgba(15,23,42,0.1);resize:none;font-size:14px;font-family:inherit}
@@ -247,7 +270,7 @@
           .map((m, i) => {
             const mentorGrade = m.grade ?? m.mentor_grade ?? m.mentorGrade ?? '—';
             return `
-          <div class="match-card">
+          <div class="match-card" id="mcard-${i}">
             <div class="match-top">
               <div class="match-rank">#${i + 1}</div>
               <div class="match-score">${Math.round((m.match_score || 0) * 100)}%</div>
@@ -255,9 +278,160 @@
             <div class="match-name">${escHtml(m.name)}</div>
             <div class="match-meta">Grade ${escHtml(String(mentorGrade))} · ${escHtml(m.subject)} · ${escHtml(m.qualifications || '—')}</div>
             <div class="match-expl">${escHtml(m.explanation || '')}</div>
+            <div style="margin-top:10px">
+              <button class="prob-btn nav" onclick="openSlotPicker(${i}, ${JSON.stringify(m.name).replace(/"/g,'&quot;')})">
+                🗓 View available time slots
+              </button>
+            </div>
+            <div class="slot-picker" id="slots-${i}" style="display:none">
+              <div class="slot-picker-header">
+                <span class="slot-picker-title">📅 Weekly availability</span>
+                <button class="slot-close-btn" onclick="closeSlotPicker(${i})">✕ Close</button>
+              </div>
+              <div class="cal-wrap" id="slot-grid-${i}">
+                <span class="slot-loading">Loading…</span>
+              </div>
+            </div>
           </div>`;
           })
           .join('');
+
+        // Store match data for slot picker
+        window._lastMatches = visibleMatches;
+      }
+
+      const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
+
+      function closeSlotPicker(cardIndex) {
+        document.getElementById(`slots-${cardIndex}`).style.display = 'none';
+      }
+
+      async function openSlotPicker(cardIndex, mentorName) {
+        const picker = document.getElementById(`slots-${cardIndex}`);
+        const wrap   = document.getElementById(`slot-grid-${cardIndex}`);
+        if (picker.style.display !== 'none') {
+          picker.style.display = 'none';
+          return;
+        }
+        picker.style.display = 'block';
+        wrap.innerHTML = '<div class="slot-loading">Loading schedule…</div>';
+        try {
+          const res = await fetch(`${API}/mentors/${encodeURIComponent(mentorName)}/slots`);
+          const slots = await res.json();
+          if (!Array.isArray(slots) || slots.length === 0) {
+            wrap.innerHTML = '<p style="font-size:13px;color:#64748b;padding:8px 0">No time slots available yet.</p>';
+            return;
+          }
+          wrap.innerHTML = buildCalendarGrid(slots, cardIndex, mentorName);
+        } catch(e) {
+          wrap.innerHTML = `<p style="font-size:13px;color:#dc2626">Could not load slots: ${e.message}</p>`;
+        }
+      }
+
+      function buildCalendarGrid(slots, cardIndex, mentorName) {
+        // Collect all unique hour values and which days have slots
+        const timeSet = new Set();
+        const slotMap = {}; // key: "Day|HH:MM" → slot object
+        slots.forEach(s => {
+          timeSet.add(s.start_time);
+          slotMap[`${s.day_of_week}|${s.start_time}`] = s;
+        });
+
+        // Only show days that have at least one slot
+        const activeDays = DAYS.filter(d => slots.some(s => s.day_of_week === d));
+        const times = Array.from(timeSet).sort();
+
+        // Header row
+        let html = '<table class="cal-table"><thead><tr>';
+        html += '<th class="time-col">Time</th>';
+        activeDays.forEach(d => {
+          html += `<th>${d.slice(0,3)}</th>`;
+        });
+        html += '</tr></thead><tbody>';
+
+        // One row per hour
+        times.forEach(time => {
+          const [h] = time.split(':').map(Number);
+          const endH = h + 1;
+          const label = `${fmt12(h)}`;
+          html += '<tr>';
+          html += `<td class="time-label">${label}</td>`;
+          activeDays.forEach(day => {
+            const slot = slotMap[`${day}|${time}`];
+            if (slot) {
+              const safeDay  = slot.day_of_week.replace(/'/g,"\\'");
+              const safeStart = slot.start_time.replace(/'/g,"\\'");
+              const safeEnd   = slot.end_time.replace(/'/g,"\\'");
+              const safeMentor = mentorName.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+              html += `<td>
+                <button class="slot-cell-btn"
+                  data-slot-id="${slot.id}"
+                  data-card="${cardIndex}"
+                  onclick="selectSlot(${cardIndex},${slot.id},'${safeMentor}','${safeDay}','${safeStart}','${safeEnd}')">
+                  ${fmt12(h)}–${fmt12(endH)}
+                </button>
+              </td>`;
+            } else {
+              html += '<td></td>';
+            }
+          });
+          html += '</tr>';
+        });
+
+        html += '</tbody></table>';
+        return html;
+      }
+
+      function fmt12(h) {
+        if (h === 0)  return '12 AM';
+        if (h === 12) return '12 PM';
+        return h < 12 ? `${h} AM` : `${h - 12} PM`;
+      }
+
+      function selectSlot(cardIndex, slotId, mentorName, dayOfWeek, startTime, endTime) {
+        // Highlight the chosen slot in the grid
+        document.querySelectorAll(`.slot-cell-btn[data-card="${cardIndex}"]`).forEach(b => b.classList.remove('selected'));
+        const btn = document.querySelector(`.slot-cell-btn[data-slot-id="${slotId}"][data-card="${cardIndex}"]`);
+        if (btn) btn.classList.add('selected');
+
+        const matchIndex = cardIndex + 1;
+        const slotLabel = `${dayOfWeek}s ${startTime}–${endTime}`;
+        addMsg('user', `Book ${matchIndex}`);
+        sendSlotBooking(matchIndex, slotId, slotLabel, mentorName);
+      }
+
+      async function sendSlotBooking(matchNumber, slotId, slotLabel, mentorName) {
+        try {
+          const res1 = await fetch(`${API}/chat`, {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({session_id: SESSION, message: `book ${matchNumber}`, forced_agent: 'match'}),
+          });
+          const d1 = await res1.json();
+          addMsg('bot', d1.reply || '', d1.active_agent || 'match');
+          updateState(d1);
+
+          if (d1.state === 'awaiting_slot_selection') {
+            // Fetch the slots for this mentor to find which number our chosen slot is
+            const slotsRes = await fetch(`${API}/mentors/${encodeURIComponent(mentorName)}/slots`);
+            const slots = await slotsRes.json();
+            const slotIndex = Array.isArray(slots) ? slots.findIndex(s => s.id === slotId) : -1;
+            const slotNum = slotIndex >= 0 ? slotIndex + 1 : 1;
+
+            addMsg('user', `${slotNum} — ${slotLabel}`);
+            const res2 = await fetch(`${API}/chat`, {
+              method: 'POST', headers: {'Content-Type':'application/json'},
+              body: JSON.stringify({session_id: SESSION, message: String(slotNum), forced_agent: 'match'}),
+            });
+            const d2 = await res2.json();
+            addMsg('bot', d2.reply || '', d2.active_agent || 'match');
+            updateState(d2);
+            renderMatches(d2.matches, d2);
+          } else {
+            renderMatches(d1.matches, d1);
+          }
+        } catch(e) {
+          addMsg('bot', 'Could not reach backend. Is it running at http://localhost:8000?');
+        }
       }
 
       // ── Contest problem rendering (PDF page images) ─────────────────────────

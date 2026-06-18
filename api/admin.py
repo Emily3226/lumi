@@ -4,6 +4,8 @@ import sqlite3
 import os
 from typing import Optional
 
+from api.services import add_mentor_slot, delete_mentor_slot, get_mentor_slots
+
 router = APIRouter()
 
 
@@ -124,3 +126,35 @@ def train_mentor_model():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
+
+
+# ── Time slot management ──────────────────────────────────────────────────────
+
+class SlotIn(BaseModel):
+    day_of_week: str  # e.g. "Monday", "Tuesday", ...
+    start_time: str   # HH:MM (24-hour)
+
+
+@router.get("/mentors/{name}/slots")
+def list_slots(name: str, all: bool = False):
+    """List weekly time slots for a mentor. Pass ?all=true to include booked slots."""
+    return get_mentor_slots(name, only_available=not all)
+
+
+@router.post("/mentors/{name}/slots")
+def create_slot(name: str, slot: SlotIn):
+    """Add a recurring weekly 1-hour slot for a mentor."""
+    try:
+        result = add_mentor_slot(name, slot.day_of_week, slot.start_time)
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.delete("/slots/{slot_id}")
+def remove_slot(slot_id: int):
+    """Delete a time slot by its ID."""
+    deleted = delete_mentor_slot(slot_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Slot not found")
+    return {"status": "deleted", "slot_id": slot_id}

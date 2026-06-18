@@ -74,163 +74,16 @@
     ]
   },
   "session_h9ssvcv": {
-    "state": "showing_results",
-    "subject": "math",
-    "grade": 9,
+    "state": "idle",
+    "subject": null,
+    "grade": null,
     "name": null,
-    "active_agent": "match",
+    "active_agent": "general",
     "pending_match_step": null,
-    "query_text": "math",
+    "query_text": null,
     "pending_booking_choice": null,
-    "matches": [
-      {
-        "name": "Liam Johnson",
-        "grade": 12,
-        "subject": "English",
-        "qualifications": "Essay coaching, debate team",
-        "profile_text": "Liam Johnson is a grade 12 student who wants to teach English. english. Related topics: english, eng, writing, essay, essays, grammar, reading, literature, comprehension, vocabulary. Qualifications: Essay coaching, debate team.",
-        "similarity_score": 0.19390428066253662,
-        "match_score": 0.419,
-        "explanation": "Good match: (lowered for not matching mentee subject), 3 grades ahead, Essay coaching, debate team."
-      }
-    ],
+    "matches": [],
     "messages": [
-      {
-        "role": "user",
-        "content": "bring me back to general"
-      },
-      {
-        "role": "assistant",
-        "content": "What grade is the mentee in?"
-      },
-      {
-        "role": "user",
-        "content": "who am i"
-      },
-      {
-        "role": "assistant",
-        "content": "Based on our conversation, you are a 10th-grade student who needs help with math."
-      },
-      {
-        "role": "user",
-        "content": "what is my name"
-      },
-      {
-        "role": "assistant",
-        "content": "Your name is Emily."
-      },
-      {
-        "role": "user",
-        "content": "what is auxilium"
-      },
-      {
-        "role": "assistant",
-        "content": "Auxilium is a non-profit organization dedicated to supporting students by connecting them with dedicated mentors. We facilitate one-on-one mentorship pairings and host academic webinars to help students navigate their educational and personal development journeys."
-      },
-      {
-        "role": "user",
-        "content": "im a tenth grade student at merivale high school in the ib program"
-      },
-      {
-        "role": "assistant",
-        "content": "What grade is the mentee in?"
-      },
-      {
-        "role": "user",
-        "content": "im a tenth grade student at merivale high school in the ib program"
-      },
-      {
-        "role": "assistant",
-        "content": "It seems like you've mentioned your school and program a few times. Since you're a 10th-grade student at Merivale High School in the IB program, I'd like to know what subject or skill you'd like help with. Is it a specific IB subject, like math, science, or language, or perhaps something else?"
-      },
-      {
-        "role": "user",
-        "content": "who am i"
-      },
-      {
-        "role": "assistant",
-        "content": "Based on our conversation, you are a 10th-grade student who needs help with math."
-      },
-      {
-        "role": "user",
-        "content": "what is my name and school"
-      },
-      {
-        "role": "assistant",
-        "content": "Based on our conversation, your name is Emily and your school is Bell High School, not Merivale High School (which you mentioned earlier in the IB program). If you'd like to correct your school, please let me know.\n\nAlso, I noticed you're in the 10th grade and interested in AP Calculus, and your goal is to attend the University of Waterloo. Is there anything specific you'd like to discuss or work on?"
-      },
-      {
-        "role": "user",
-        "content": "hi"
-      },
-      {
-        "role": "assistant",
-        "content": "It seems like we've said hello a couple of times. Is there something specific you'd like to talk about or ask for help with, like a math problem or something related to school?"
-      },
-      {
-        "role": "user",
-        "content": "who am i"
-      },
-      {
-        "role": "assistant",
-        "content": "Based on our conversation, you are a 10th-grade student who needs help with math. Your name is Emily, and your goal is to attend the University of Waterloo, where you're interested in studying AP Calculus."
-      },
-      {
-        "role": "user",
-        "content": "i want a mentor"
-      },
-      {
-        "role": "assistant",
-        "content": "Switched to the Match agent.\n\nWhat grade is the mentee in?"
-      },
-      {
-        "role": "user",
-        "content": "hello"
-      },
-      {
-        "role": "assistant",
-        "content": "We've said hello a couple of times. Would you like to discuss something specific, like a math problem or your goals for attending the University of Waterloo?"
-      },
-      {
-        "role": "user",
-        "content": "i want a mentor"
-      },
-      {
-        "role": "assistant",
-        "content": "Switched to the Match agent.\n\nWhat grade is the mentee in?"
-      },
-      {
-        "role": "user",
-        "content": "can you show me all mentors"
-      },
-      {
-        "role": "assistant",
-        "content": "What grade is the mentee in?"
-      },
-      {
-        "role": "user",
-        "content": "bring me back to general agent"
-      },
-      {
-        "role": "assistant",
-        "content": "Switched to the General agent.\n\nYou can ask me questions from the knowledge file or request another mode anytime."
-      },
-      {
-        "role": "user",
-        "content": "can i see all available mentors"
-      },
-      {
-        "role": "assistant",
-        "content": "Top 3 suitable mentors:\n- Anoop · Grade 13 · English · available\n- Liam Johnson · Grade 12 · English · available\n- Selena Cui · Grade 13 · Biology · available"
-      },
-      {
-        "role": "user",
-        "content": "no just all available ones"
-      },
-      {
-        "role": "assistant",
-        "content": "Unfortunately, I don't have information on all available mentors at this time. However, I can offer some suggestions on how you can find a suitable mentor.\n\nYou can try browsing through our mentor directory on the Auxilium app, which lists mentors with their qualifications and availability. You can also try searching online for mentors who specialize in your area of interest, such as AP Calculus.\n\nAdditionally, you can also ask me to narrow down the search based on specific criteria, such as grade level, subject, or location. Just let me know what you're looking for, and I'll do my best to help.\n\nHere are all the available mentors that I have information on:\n- Anoop · Grade 13 · English · available\n- Liam Johnson · Grade 12 · English · available\n- Selena Cui · Grade 13 · Biology · available\n- Ethan · Grade 11 · Math · available\n- Rachel Lee · Grade 12 · Science · available\n- David Kim · Grade 13 · History · available\n- Olivia Brown · Grade 11 · English · available\n- Ava Chen · Grade 12 · Math · available\n\nPlease note that this is not an exhaustive list, and there may be other mentors available who are not listed here."
-      },
       {
         "role": "user",
         "content": "i want a mentor"
@@ -254,8 +107,148 @@
       {
         "role": "assistant",
         "content": "I found 1 match. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
+      },
+      {
+        "role": "user",
+        "content": "hi"
+      },
+      {
+        "role": "assistant",
+        "content": "What grade is the mentee in?"
+      },
+      {
+        "role": "user",
+        "content": "9"
+      },
+      {
+        "role": "assistant",
+        "content": "What subject or skill do you want help with?"
+      },
+      {
+        "role": "user",
+        "content": "math"
+      },
+      {
+        "role": "assistant",
+        "content": "I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
+      },
+      {
+        "role": "user",
+        "content": "9"
+      },
+      {
+        "role": "assistant",
+        "content": "I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
+      },
+      {
+        "role": "user",
+        "content": "who am i"
+      },
+      {
+        "role": "assistant",
+        "content": "You are a 9th-grade student looking for help with math."
+      },
+      {
+        "role": "user",
+        "content": "correct"
+      },
+      {
+        "role": "assistant",
+        "content": "Let's get back to the mentor matching. You're looking for help with math in grade 9. Here are your mentor options:\n\n1. Ethan - Grade 11 Math\n2. Ava Chen - Grade 12 Math\n3. (Other mentor's name) - Grade 13 Math\n\nWhich one would you like to book? Type 'book 1', 'book 2', or 'book 3' to confirm."
+      },
+      {
+        "role": "user",
+        "content": "i want a mentor"
+      },
+      {
+        "role": "assistant",
+        "content": "Switched to the Match agent.\n\nWhat grade is the mentee in?"
+      },
+      {
+        "role": "user",
+        "content": "9"
+      },
+      {
+        "role": "assistant",
+        "content": "I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
+      },
+      {
+        "role": "user",
+        "content": "9"
+      },
+      {
+        "role": "assistant",
+        "content": "I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
+      },
+      {
+        "role": "user",
+        "content": "8"
+      },
+      {
+        "role": "assistant",
+        "content": "What grade is the mentee in?"
+      },
+      {
+        "role": "user",
+        "content": "9"
+      },
+      {
+        "role": "assistant",
+        "content": "What subject or skill do you want help with?"
+      },
+      {
+        "role": "user",
+        "content": "math"
+      },
+      {
+        "role": "assistant",
+        "content": "I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
+      },
+      {
+        "role": "user",
+        "content": "book 1"
+      },
+      {
+        "role": "assistant",
+        "content": "Great choice! **Maya Patel** has the following available time slots. Enter the number to pick one:\n\n1. Mondays  14:00–15:00\n2. Mondays  16:00–17:00\n3. Tuesdays  15:00–16:00\n4. Tuesdays  17:00–18:00\n5. Wednesdays  14:00–15:00\n6. Wednesdays  16:00–17:00\n7. Wednesdays  18:00–19:00\n8. Thursdays  15:00–16:00\n9. Thursdays  17:00–18:00\n10. Fridays  14:00–15:00\n11. Fridays  16:00–17:00\n12. Sundays  10:00–11:00"
+      },
+      {
+        "role": "user",
+        "content": "5"
+      },
+      {
+        "role": "assistant",
+        "content": "Great — you picked **Wednesdays 14:00–15:00**.\n\nWhat is the mentee's name so I can save the booking?"
+      },
+      {
+        "role": "user",
+        "content": "bob"
+      },
+      {
+        "role": "assistant",
+        "content": "Thanks, Bob. What is the mentee's email address so I can send the booking confirmation?"
+      },
+      {
+        "role": "user",
+        "content": "emilyzhang6322@gmail.com"
+      },
+      {
+        "role": "assistant",
+        "content": "Here's a summary of the booking:\n\nMentee: Bob\nMentee email: emilyzhang6322@gmail.com\nGrade: 9\nSubject: math\nMentor: Maya Patel (Grade 11)\nTime slot: Wednesdays  14:00–15:00\n\nIs this correct? (yes/no)"
+      },
+      {
+        "role": "user",
+        "content": "yes"
+      },
+      {
+        "role": "assistant",
+        "content": "Booked!\n\nBob -> Maya Patel\nmath - Grade 9 -> Grade 11\n\nA confirmation email has been sent to emilyzhang6322@gmail.com.\n\nIs there anything else I can help you with?"
       }
-    ]
+    ],
+    "pending_mentee_email": null,
+    "pending_slots": null,
+    "pending_slot_id": null,
+    "pending_slot_label": null
   },
   "switch_test_1": {
     "state": "idle",

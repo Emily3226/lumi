@@ -11,18 +11,18 @@
     "User name: Emily"
   ],
   "examples": [
-    "[match] 9 -> I found 1 match. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
-    "[match] i want a math mentor -> Switched to the Match agent.\n\nWhat grade is the mentee in?",
+    "[match] 9 -> What subject or skill do you want help with?",
+    "[match] math -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
     "[match] 9 -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
-    "[match] but you didnt ask what grade im in -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
-    "[match] book 1 -> What is In's email address so I can send the booking confirmation?",
-    "[match] ezhan322@gmail.com -> Here's a summary of the booking:\n\nMentee: In\nMentee email: ezhan322@gmail.com\nGrade: 9\nSubject: math\nMentor: Maya Patel (Grade 11)\n\nIs this correct? (yes/no)",
-    "[match] no -> No problem - let's try again. What grade is the mentee in?",
-    "[match] science -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
-    "[match] book 1 -> What is the mentee's name so I can save the booking?",
+    "[general] who am i -> You are a 9th-grade student looking for help with math.",
+    "[general] correct -> Let's get back to the mentor matching. You're looking for help with math in grade 9. Here are your mentor options:\n\n1. Ethan - Grade 11 Math\n2. Ava Chen - Grade 12 Math\n3. (Other mentor's name) - Grade 13 Math\n\nWhich one would you like to book? Type 'book 1', 'book 2', or 'book 3' to confirm.",
+    "[match] i want a mentor -> Switched to the Match agent.\n\nWhat grade is the mentee in?",
+    "[match] 8 -> What grade is the mentee in?",
+    "[match] book 1 -> Great choice! **Maya Patel** has the following available time slots. Enter the number to pick one:\n\n1. Mondays  14:00–15:00\n2. Mondays  16:00–17:00\n3. Tuesdays  15:00–16:00\n4. Tuesdays  17:00–18:00\n5. Wednesdays  14:00–15:00\n6. Wednesdays  16:00–17:00\n7. Wednesdays  18:00–19:00\n8. Thursdays  15:00–16:00\n9. Thursdays  17:00–18:00\n10. Fridays  14:00–15:00\n11. Fridays  16:00–17:00\n12. Sundays  10:00–11:00",
+    "[match] 5 -> Great — you picked **Wednesdays 14:00–15:00**.\n\nWhat is the mentee's name so I can save the booking?",
     "[match] bob -> Thanks, Bob. What is the mentee's email address so I can send the booking confirmation?",
-    "[match] ezhan322@gmail.com -> Here's a summary of the booking:\n\nMentee: Bob\nMentee email: ezhan322@gmail.com\nGrade: 9\nSubject: science\nMentor: Sofia Chen (Grade 10)\n\nIs this correct? (yes/no)",
-    "[general] yes -> Booked!\n\nBob -> Sofia Chen\nscience - Grade 9 -> Grade 10\n\nA confirmation email has been sent to ezhan322@gmail.com.\n\nIs there anything else I can help you with?"
+    "[match] emilyzhang6322@gmail.com -> Here's a summary of the booking:\n\nMentee: Bob\nMentee email: emilyzhang6322@gmail.com\nGrade: 9\nSubject: math\nMentor: Maya Patel (Grade 11)\nTime slot: Wednesdays  14:00–15:00\n\nIs this correct? (yes/no)",
+    "[general] yes -> Booked!\n\nBob -> Maya Patel\nmath - Grade 9 -> Grade 11\n\nA confirmation email has been sent to emilyzhang6322@gmail.com.\n\nIs there anything else I can help you with?"
   ],
-  "updated_at": "session_ged24bv"
+  "updated_at": "session_h9ssvcv"
 }

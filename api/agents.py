@@ -14,7 +14,7 @@ from typing import Any
 from langchain_core.runnables import RunnableBranch, RunnableLambda
 import requests
 
-from api.services import book_pairing_in_db, list_available_mentors, match_mentors
+from api.services import book_pairing_in_db, get_mentor_slots, list_available_mentors, match_mentors
 from api.memory_store import get_memory_context, clear_session_memory
 from api.email_service import send_booking_confirmation
 from rag.subject_utils import subject_key
@@ -84,6 +84,7 @@ BOOKING_FLOW_STATES = {
     "awaiting_booking_name",
     "awaiting_booking_email",
     "awaiting_booking_confirmation",
+    "awaiting_slot_selection",
 }
 
 
@@ -249,6 +250,7 @@ def reset_session(session: dict[str, Any]) -> None:
             "pending_match_step": None,
             "pending_booking_choice": None,
             "pending_mentee_email": None,
+            "pending_slot_id": None,
             "messages": [],
         }
     )
@@ -467,6 +469,16 @@ def _score_general_knowledge(message: str, text: str) -> int:
 def _groq_api_key() -> str:
     _load_dotenv_file()
     return os.getenv("GROQ_API_KEY", GROQ_API_KEY).strip()
+
+
+def _format_slot_list(slots: list[dict]) -> str:
+    """Format a list of weekly time slots as a numbered list for chat display."""
+    if not slots:
+        return "(No slots available)"
+    lines = []
+    for i, slot in enumerate(slots, 1):
+        lines.append(f"{i}. {slot['day_of_week']}s  {slot['start_time']}–{slot['end_time']}")
+    return "\n".join(lines)
 
 
 class MentorTaskAgents:
@@ -784,13 +796,15 @@ class MentorTaskAgents:
         mentee_email = session.get("pending_mentee_email") or ""
         subject = session.get("subject") or mentor["subject"]
         grade = int(session.get("grade") or 0)
+        slot_label = session.get("pending_slot_label") or "No slot selected"
         return (
             "Here's a summary of the booking:\n\n"
             f"Mentee: {mentee_name}\n"
             f"Mentee email: {mentee_email}\n"
             f"Grade: {grade}\n"
             f"Subject: {subject}\n"
-            f"Mentor: {mentor['name']} (Grade {mentor['grade']})\n\n"
+            f"Mentor: {mentor['name']} (Grade {mentor['grade']})\n"
+            f"Time slot: {slot_label}\n\n"
             "Is this correct? (yes/no)"
         )
 
@@ -842,6 +856,46 @@ class MentorTaskAgents:
                     booking_state="needs_grade",
                     active_agent="match",
                 )
+
+        # ------------------------------------------------------------------
+        # Slot selection: user picks a time slot after choosing a mentor
+        # ------------------------------------------------------------------
+        if session.get("state") == "awaiting_slot_selection":
+            pending_slots = session.get("pending_slots", [])
+            # Accept a number like "1", "2", ... or "slot 1" etc.
+            slot_choice_match = re.search(r"\b(\d+)\b", message)
+            if not slot_choice_match or not pending_slots:
+                slot_lines = _format_slot_list(pending_slots)
+                return AgentResult(
+                    reply=f"Please enter the number of the time slot you want.\n\n{slot_lines}",
+                    state="awaiting_slot_selection",
+                    matches=matches,
+                    booking_state="awaiting_slot",
+                    active_agent=session.get("active_agent", "general"),
+                )
+
+            slot_idx = int(slot_choice_match.group(1)) - 1
+            if slot_idx < 0 or slot_idx >= len(pending_slots):
+                slot_lines = _format_slot_list(pending_slots)
+                return AgentResult(
+                    reply=f"That number isn't in the list. Please choose between 1 and {len(pending_slots)}.\n\n{slot_lines}",
+                    state="awaiting_slot_selection",
+                    matches=matches,
+                    booking_state="awaiting_slot",
+                    active_agent=session.get("active_agent", "general"),
+                )
+
+            chosen_slot = pending_slots[slot_idx]
+            session["pending_slot_id"] = chosen_slot["id"]
+            session["pending_slot_label"] = f"{chosen_slot['day_of_week']}s  {chosen_slot['start_time']}–{chosen_slot['end_time']}"
+            session["state"] = "awaiting_booking_name"
+            return AgentResult(
+                reply=f"Great — you picked **{chosen_slot['day_of_week']}s {chosen_slot['start_time']}–{chosen_slot['end_time']}**.\n\nWhat is the mentee's name so I can save the booking?",
+                state="awaiting_booking_name",
+                matches=matches,
+                booking_state="awaiting_name",
+                active_agent=session.get("active_agent", "general"),
+            )
 
         # ------------------------------------------------------------------
         # Booking confirmation flow: name -> email -> confirmation -> booked
@@ -940,6 +994,7 @@ class MentorTaskAgents:
                     mentor_name=mentor["name"],
                     subject=subject,
                     grade=grade,
+                    slot_label=session.get("pending_slot_label") or "",
                 )
             except Exception:
                 logger.exception("Failed to send booking confirmation email")
@@ -983,6 +1038,29 @@ class MentorTaskAgents:
                 )
 
             session["pending_booking_choice"] = choice
+            mentor = matches[choice - 1]
+
+            # Fetch available time slots for the chosen mentor
+            try:
+                available_slots = get_mentor_slots(mentor["name"], only_available=True)
+            except Exception:
+                available_slots = []
+
+            if available_slots:
+                session["pending_slots"] = available_slots
+                session["state"] = "awaiting_slot_selection"
+                slot_lines = _format_slot_list(available_slots)
+                return AgentResult(
+                    reply=f"Great choice! **{mentor['name']}** has the following available time slots. Enter the number to pick one:\n\n{slot_lines}",
+                    state="awaiting_slot_selection",
+                    matches=matches,
+                    booking_state="awaiting_slot",
+                    active_agent=session.get("active_agent", "general"),
+                )
+
+            # No slots configured — skip straight to name collection
+            session["pending_slot_id"] = None
+            session["pending_slot_label"] = "To be arranged"
 
             if not session.get("name"):
                 session["state"] = "awaiting_booking_name"
@@ -1004,7 +1082,6 @@ class MentorTaskAgents:
                     active_agent=session.get("active_agent", "general"),
                 )
 
-            mentor = matches[choice - 1]
             session["state"] = "awaiting_booking_confirmation"
             return AgentResult(
                 reply=self._build_booking_summary(session, mentor),
@@ -1144,6 +1221,7 @@ class MentorTaskAgents:
     def _save_booking(self, session: dict[str, Any], mentor: dict[str, Any], mentee_name: str, mentee_email: str = "") -> None:
         subject = session.get("subject") or mentor.get("subject") or "General"
         grade = int(session.get("grade") or 0)
+        slot_id = session.get("pending_slot_id")
         book_pairing_in_db(
             mentor_name=mentor["name"],
             mentee_name=mentee_name,
@@ -1153,6 +1231,7 @@ class MentorTaskAgents:
             match_score=float(mentor.get("match_score") or 0.0),
             explanation=str(mentor.get("explanation") or "Potential match."),
             mentee_email=mentee_email,
+            slot_id=slot_id if isinstance(slot_id, int) else None,
         )
 
     def _reset_booking_state(self, session: dict[str, Any]) -> None:
@@ -1165,6 +1244,9 @@ class MentorTaskAgents:
                 "query_text": None,
                 "pending_booking_choice": None,
                 "pending_mentee_email": None,
+                "pending_slot_id": None,
+                "pending_slot_label": None,
+                "pending_slots": None,
                 "matches": [],
             }
         )
