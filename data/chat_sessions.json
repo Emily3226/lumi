@@ -75,38 +75,22 @@
   },
   "session_h9ssvcv": {
     "state": "idle",
-    "subject": null,
-    "grade": null,
+    "subject": "science",
+    "grade": 9,
     "name": null,
     "active_agent": "general",
     "pending_match_step": null,
-    "query_text": null,
+    "query_text": "science",
     "pending_booking_choice": null,
     "matches": [],
     "messages": [
       {
         "role": "user",
-        "content": "i want a mentor"
+        "content": "yes"
       },
       {
         "role": "assistant",
-        "content": "Switched to the Match agent.\n\nWhat grade is the mentee in?"
-      },
-      {
-        "role": "user",
-        "content": "9"
-      },
-      {
-        "role": "assistant",
-        "content": "What subject or skill do you want help with?"
-      },
-      {
-        "role": "user",
-        "content": "math"
-      },
-      {
-        "role": "assistant",
-        "content": "I found 1 match. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
+        "content": "Booked!\n\nBob -> Maya Patel\nmath - Grade 9 -> Grade 11\n\nA confirmation email has been sent to emilyzhang6322@gmail.com.\n\nIs there anything else I can help you with?"
       },
       {
         "role": "user",
@@ -114,83 +98,11 @@
       },
       {
         "role": "assistant",
-        "content": "What grade is the mentee in?"
+        "content": "Hello Emily. How can I assist you with your education or Auxilium app needs today?"
       },
       {
         "role": "user",
-        "content": "9"
-      },
-      {
-        "role": "assistant",
-        "content": "What subject or skill do you want help with?"
-      },
-      {
-        "role": "user",
-        "content": "math"
-      },
-      {
-        "role": "assistant",
-        "content": "I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
-      },
-      {
-        "role": "user",
-        "content": "9"
-      },
-      {
-        "role": "assistant",
-        "content": "I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
-      },
-      {
-        "role": "user",
-        "content": "who am i"
-      },
-      {
-        "role": "assistant",
-        "content": "You are a 9th-grade student looking for help with math."
-      },
-      {
-        "role": "user",
-        "content": "correct"
-      },
-      {
-        "role": "assistant",
-        "content": "Let's get back to the mentor matching. You're looking for help with math in grade 9. Here are your mentor options:\n\n1. Ethan - Grade 11 Math\n2. Ava Chen - Grade 12 Math\n3. (Other mentor's name) - Grade 13 Math\n\nWhich one would you like to book? Type 'book 1', 'book 2', or 'book 3' to confirm."
-      },
-      {
-        "role": "user",
-        "content": "i want a mentor"
-      },
-      {
-        "role": "assistant",
-        "content": "Switched to the Match agent.\n\nWhat grade is the mentee in?"
-      },
-      {
-        "role": "user",
-        "content": "9"
-      },
-      {
-        "role": "assistant",
-        "content": "I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
-      },
-      {
-        "role": "user",
-        "content": "9"
-      },
-      {
-        "role": "assistant",
-        "content": "I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
-      },
-      {
-        "role": "user",
-        "content": "8"
-      },
-      {
-        "role": "assistant",
-        "content": "What grade is the mentee in?"
-      },
-      {
-        "role": "user",
-        "content": "9"
+        "content": "grade 9"
       },
       {
         "role": "assistant",
@@ -214,15 +126,15 @@
       },
       {
         "role": "user",
-        "content": "5"
+        "content": "3"
       },
       {
         "role": "assistant",
-        "content": "Great — you picked **Wednesdays 14:00–15:00**.\n\nWhat is the mentee's name so I can save the booking?"
+        "content": "Great — you picked **Tuesdays 15:00–16:00**.\n\nWhat is the mentee's name so I can save the booking?"
       },
       {
         "role": "user",
-        "content": "bob"
+        "content": "Bob"
       },
       {
         "role": "assistant",
@@ -234,7 +146,7 @@
       },
       {
         "role": "assistant",
-        "content": "Here's a summary of the booking:\n\nMentee: Bob\nMentee email: emilyzhang6322@gmail.com\nGrade: 9\nSubject: math\nMentor: Maya Patel (Grade 11)\nTime slot: Wednesdays  14:00–15:00\n\nIs this correct? (yes/no)"
+        "content": "Here's a summary of the booking:\n\nMentee: Bob\nMentee email: emilyzhang6322@gmail.com\nGrade: 9\nSubject: math\nMentor: Maya Patel (Grade 11)\nTime slot: Tuesdays  15:00–16:00\n\nIs this correct? (yes/no)"
       },
       {
         "role": "user",
@@ -243,6 +155,94 @@
       {
         "role": "assistant",
         "content": "Booked!\n\nBob -> Maya Patel\nmath - Grade 9 -> Grade 11\n\nA confirmation email has been sent to emilyzhang6322@gmail.com.\n\nIs there anything else I can help you with?"
+      },
+      {
+        "role": "user",
+        "content": "can i book another mentor for science"
+      },
+      {
+        "role": "assistant",
+        "content": "Mentors provide a wide range of support, including academic guidance, study strategies, career advice, and general encouragement. You can also participate in our community-wide academic webinars for additional, structured learning opportunities."
+      },
+      {
+        "role": "user",
+        "content": "so can i book one"
+      },
+      {
+        "role": "assistant",
+        "content": "Absolutely. If you have a specific area of expertise, study methodology, or topic you'd like to share with a broader audience, we encourage our mentors to lead or participate in our regular academic webinars."
+      },
+      {
+        "role": "user",
+        "content": "yeah i want to book a mentor"
+      },
+      {
+        "role": "assistant",
+        "content": "Switched to the Match agent.\n\nWhat grade is the mentee in?"
+      },
+      {
+        "role": "user",
+        "content": "9"
+      },
+      {
+        "role": "assistant",
+        "content": "What subject or skill do you want help with?"
+      },
+      {
+        "role": "user",
+        "content": "science"
+      },
+      {
+        "role": "assistant",
+        "content": "I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
+      },
+      {
+        "role": "user",
+        "content": "can i book maya oatek"
+      },
+      {
+        "role": "assistant",
+        "content": "I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
+      },
+      {
+        "role": "user",
+        "content": "hi"
+      },
+      {
+        "role": "assistant",
+        "content": "It seems like we're having a friendly conversation. However, I'm here to help with education and Auxilium support. Is there anything specific you'd like to discuss or book a mentor for?"
+      },
+      {
+        "role": "user",
+        "content": "who am i"
+      },
+      {
+        "role": "assistant",
+        "content": "Based on our previous conversation, I believe you are Emily, a 9th-grade student who is looking for a mentor in science."
+      },
+      {
+        "role": "user",
+        "content": "yes"
+      },
+      {
+        "role": "assistant",
+        "content": "It seems like you're confirming our previous conversation. If you'd like to proceed with booking a mentor or discussing science topics, I'm here to help. What would you like to do next?"
+      },
+      {
+        "role": "user",
+        "content": "can i be a mentor at auxilium"
+      },
+      {
+        "role": "assistant",
+        "content": "We welcome individuals who have a strong academic or professional background and a genuine desire to guide and support students. Whether you are an upper-year university student, a recent graduate, or an established professional, your experience is valuable."
+      },
+      {
+        "role": "user",
+        "content": "what kind of experience is enough"
+      },
+      {
+        "role": "assistant",
+        "content": "To become a mentor at Auxilium, we consider a variety of factors, including:\n\n* Academic achievements (e.g., high grades, academic awards)\n* Relevant work or volunteer experience (e.g., teaching, tutoring, research, industry expertise)\n* Leadership or extracurricular roles (e.g., sports teams, clubs, volunteer work)\n* Strong communication and interpersonal skills\n\nWhile there's no specific threshold for \"enough\" experience, we generally look for individuals who have a strong foundation in their field and a passion for sharing their knowledge with others.\n\nIf you're interested in becoming a mentor, I can guide you through the application process and help you determine whether your experience is a good fit. Would you like to proceed?"
       }
     ],
     "pending_mentee_email": null,

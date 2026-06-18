@@ -1222,6 +1222,7 @@ class MentorTaskAgents:
         subject = session.get("subject") or mentor.get("subject") or "General"
         grade = int(session.get("grade") or 0)
         slot_id = session.get("pending_slot_id")
+        slot_label = session.get("pending_slot_label") or ""
         book_pairing_in_db(
             mentor_name=mentor["name"],
             mentee_name=mentee_name,
@@ -1232,6 +1233,7 @@ class MentorTaskAgents:
             explanation=str(mentor.get("explanation") or "Potential match."),
             mentee_email=mentee_email,
             slot_id=slot_id if isinstance(slot_id, int) else None,
+            slot_label=slot_label,
         )
 
     def _reset_booking_state(self, session: dict[str, Any]) -> None:

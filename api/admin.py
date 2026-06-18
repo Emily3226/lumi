@@ -68,7 +68,7 @@ def list_mentees():
 def list_bookings():
     conn = _get_db()
     rows = conn.execute(
-        "SELECT id, mentor_name, mentee_name, subject, mentor_grade, mentee_grade, match_score, explanation, created_at, status FROM bookings ORDER BY created_at DESC"
+        "SELECT id, mentor_name, mentee_name, subject, mentor_grade, mentee_grade, match_score, explanation, created_at, status, slot_id, slot_label FROM bookings ORDER BY created_at DESC"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -77,7 +77,7 @@ def list_bookings():
 @router.post("/bookings/{booking_id}/cancel")
 def cancel_booking(booking_id: int):
     conn = _get_db()
-    cur = conn.execute("SELECT id, mentor_name, status FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    cur = conn.execute("SELECT id, mentor_name, status, slot_id FROM bookings WHERE id = ?", (booking_id,)).fetchone()
     if not cur:
         conn.close()
         raise HTTPException(status_code=404, detail="Booking not found")
@@ -88,6 +88,9 @@ def cancel_booking(booking_id: int):
     # mark booking cancelled and release mentor
     conn.execute("UPDATE bookings SET status = 'cancelled' WHERE id = ?", (booking_id,))
     conn.execute("UPDATE mentors SET available = 1 WHERE name = ?", (cur['mentor_name'],))
+    # free the time slot too
+    if cur['slot_id']:
+        conn.execute("UPDATE mentor_timeslots SET available = 1 WHERE id = ?", (cur['slot_id'],))
     conn.commit()
     conn.close()
     return {"status": "cancelled", "id": booking_id}

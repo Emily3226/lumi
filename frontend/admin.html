@@ -40,7 +40,7 @@
     <h3 class="section">Bookings</h3>
     <div>
       <button id="refresh-bookings">Refresh Bookings</button>
-      <table id="bookings"><thead><tr><th>ID</th><th>Mentor</th><th>Mentee</th><th>Subject</th><th>Score</th><th>When</th><th>Status</th><th>Action</th></tr></thead><tbody></tbody></table>
+      <table id="bookings"><thead><tr><th>ID</th><th>Mentor</th><th>Mentee</th><th>Subject</th><th>Score</th><th>Time Slot</th><th>When</th><th>Status</th><th>Action</th></tr></thead><tbody></tbody></table>
     </div>
 
     <!-- ── Time Slot Management ──────────────────────────────────────── -->
@@ -126,7 +126,7 @@
         bbody.innerHTML = '';
         data.forEach(b => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${b.id}</td><td>${b.mentor_name}</td><td>${b.mentee_name}</td><td>${b.subject}</td><td>${Math.round((b.match_score||0)*100)}%</td><td>${b.created_at}</td><td>${b.status||'active'}</td><td></td>`;
+          tr.innerHTML = `<td>${b.id}</td><td>${b.mentor_name}</td><td>${b.mentee_name}</td><td>${b.subject}</td><td>${Math.round((b.match_score||0)*100)}%</td><td>${b.slot_label || '—'}</td><td>${b.created_at}</td><td>${b.status||'active'}</td><td></td>`;
           const td = tr.querySelector('td:last-child');
           if((b.status||'active') === 'active'){
             const cancel = document.createElement('button');
@@ -169,9 +169,9 @@
         }
         slots.forEach(s => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${s.id}</td><td>${s.day_of_week}</td><td>${s.start_time}</td><td>${s.end_time}</td><td>${s.is_booked ? '🔴 Booked' : '🟢 Free'}</td><td></td>`;
+          tr.innerHTML = `<td>${s.id}</td><td>${s.day_of_week}</td><td>${s.start_time}</td><td>${s.end_time}</td><td>${s.available ? '🟢 Available' : '🔴 Booked'}</td><td></td>`;
           const td = tr.querySelector('td:last-child');
-          if (!s.is_booked) {
+          if (s.available) {
             const del = document.createElement('button');
             del.textContent = 'Delete';
             del.className = 'del-btn';

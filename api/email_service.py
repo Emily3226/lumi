@@ -21,7 +21,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-AUXILIUM_SUPPORT_EMAIL = "auxilium.mentorship@gmail.com"
+AUXILIUM_SUPPORT_EMAIL = "ezhan322@gmail.com"
 SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = 465
 

@@ -73,6 +73,7 @@ class BookingRequest(BaseModel):
     match_score: float
     explanation: str
     slot_id: int | None = None
+    slot_label: str = ""
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -116,6 +117,7 @@ def book_pairing(req: BookingRequest):
             match_score=req.match_score,
             explanation=req.explanation,
             slot_id=req.slot_id,
+            slot_label=req.slot_label,
         )
     except ValueError as exc:
         detail = str(exc)

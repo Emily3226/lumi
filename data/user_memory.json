@@ -11,18 +11,18 @@
     "User name: Emily"
   ],
   "examples": [
+    "[match] emilyzhang6322@gmail.com -> Here's a summary of the booking:\n\nMentee: Bob\nMentee email: emilyzhang6322@gmail.com\nGrade: 9\nSubject: math\nMentor: Maya Patel (Grade 11)\nTime slot: Tuesdays  15:00–16:00\n\nIs this correct? (yes/no)",
+    "[general] can i book another mentor for science -> Mentors provide a wide range of support, including academic guidance, study strategies, career advice, and general encouragement. You can also participate in our community-wide academic webinars for additional, structured learning opportunities.",
+    "[general] so can i book one -> Absolutely. If you have a specific area of expertise, study methodology, or topic you'd like to share with a broader audience, we encourage our mentors to lead or participate in our regular academic webinars.",
+    "[match] yeah i want to book a mentor -> Switched to the Match agent.\n\nWhat grade is the mentee in?",
     "[match] 9 -> What subject or skill do you want help with?",
-    "[match] math -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
-    "[match] 9 -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
-    "[general] who am i -> You are a 9th-grade student looking for help with math.",
-    "[general] correct -> Let's get back to the mentor matching. You're looking for help with math in grade 9. Here are your mentor options:\n\n1. Ethan - Grade 11 Math\n2. Ava Chen - Grade 12 Math\n3. (Other mentor's name) - Grade 13 Math\n\nWhich one would you like to book? Type 'book 1', 'book 2', or 'book 3' to confirm.",
-    "[match] i want a mentor -> Switched to the Match agent.\n\nWhat grade is the mentee in?",
-    "[match] 8 -> What grade is the mentee in?",
-    "[match] book 1 -> Great choice! **Maya Patel** has the following available time slots. Enter the number to pick one:\n\n1. Mondays  14:00–15:00\n2. Mondays  16:00–17:00\n3. Tuesdays  15:00–16:00\n4. Tuesdays  17:00–18:00\n5. Wednesdays  14:00–15:00\n6. Wednesdays  16:00–17:00\n7. Wednesdays  18:00–19:00\n8. Thursdays  15:00–16:00\n9. Thursdays  17:00–18:00\n10. Fridays  14:00–15:00\n11. Fridays  16:00–17:00\n12. Sundays  10:00–11:00",
-    "[match] 5 -> Great — you picked **Wednesdays 14:00–15:00**.\n\nWhat is the mentee's name so I can save the booking?",
-    "[match] bob -> Thanks, Bob. What is the mentee's email address so I can send the booking confirmation?",
-    "[match] emilyzhang6322@gmail.com -> Here's a summary of the booking:\n\nMentee: Bob\nMentee email: emilyzhang6322@gmail.com\nGrade: 9\nSubject: math\nMentor: Maya Patel (Grade 11)\nTime slot: Wednesdays  14:00–15:00\n\nIs this correct? (yes/no)",
-    "[general] yes -> Booked!\n\nBob -> Maya Patel\nmath - Grade 9 -> Grade 11\n\nA confirmation email has been sent to emilyzhang6322@gmail.com.\n\nIs there anything else I can help you with?"
+    "[match] science -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
+    "[match] can i book maya oatek -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
+    "[general] hi -> It seems like we're having a friendly conversation. However, I'm here to help with education and Auxilium support. Is there anything specific you'd like to discuss or book a mentor for?",
+    "[general] who am i -> Based on our previous conversation, I believe you are Emily, a 9th-grade student who is looking for a mentor in science.",
+    "[general] yes -> It seems like you're confirming our previous conversation. If you'd like to proceed with booking a mentor or discussing science topics, I'm here to help. What would you like to do next?",
+    "[general] can i be a mentor at auxilium -> We welcome individuals who have a strong academic or professional background and a genuine desire to guide and support students. Whether you are an upper-year university student, a recent graduate, or an established professional, your experience is valuable.",
+    "[general] what kind of experience is enough -> To become a mentor at Auxilium, we consider a variety of factors, including:\n\n* Academic achievements (e.g., high grades, academic awards)\n* Relevant work or volunteer experience (e.g., teaching, tutoring, research, industry expertise)\n* Leadership or extracurricular roles (e.g., sports teams, clubs, volunteer work)\n* Strong communication and interpersonal skills\n\nWhile there's no specific threshold for \"enough\" experience, we generally look for individuals who have a strong foundation in their field and a passion for sharing their knowledge with others.\n\nIf you're interested in becoming a mentor, I can guide you through the application process and help you determine whether your experience is a good fit. Would you like to proceed?"
   ],
   "updated_at": "session_h9ssvcv"
 }
