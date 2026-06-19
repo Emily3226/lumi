@@ -4,7 +4,21 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Simple Lumi Admin</title>
-    <style>body{font-family:system-ui,Segoe UI,Helvetica,Arial;margin:24px}label{display:block;margin-top:8px}input,select{width:100%;padding:8px;margin-top:4px}button{margin-top:8px}table{width:100%;border-collapse:collapse;margin-top:12px}td,th{border:1px solid #ddd;padding:6px;text-align:left}</style>
+    <style>
+      body{font-family:system-ui,Segoe UI,Helvetica,Arial;margin:24px}
+      label{display:block;margin-top:8px}
+      input,select{width:100%;padding:8px;margin-top:4px;box-sizing:border-box}
+      button{margin-top:8px;padding:7px 14px;cursor:pointer}
+      table{width:100%;border-collapse:collapse;margin-top:12px}
+      td,th{border:1px solid #ddd;padding:6px;text-align:left}
+      .section{margin-top:28px}
+      .slot-form{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:10px}
+      .slot-form label{margin:0;flex:1;min-width:120px}
+      .slot-form input{padding:7px;margin-top:2px}
+      .del-btn{background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;padding:4px 10px;border-radius:6px;cursor:pointer}
+      .del-btn:hover{background:#fecaca}
+      .mentor-select{padding:8px;border:1px solid #d1d5db;border-radius:6px;min-width:180px;margin-top:4px}
+    </style>
   </head>
   <body>
     <h3>Mentors (admin)</h3>
@@ -23,21 +37,73 @@
       <table id="mentors"><thead><tr><th>Name</th><th>Grade</th><th>Subject</th><th>Qualifications</th><th>Available</th><th>Action</th></tr></thead><tbody></tbody></table>
     </div>
 
-    <h3 style="margin-top:18px">Bookings</h3>
+    <h3 class="section">Bookings</h3>
     <div>
       <button id="refresh-bookings">Refresh Bookings</button>
-      <table id="bookings"><thead><tr><th>ID</th><th>Mentor</th><th>Mentee</th><th>Subject</th><th>Score</th><th>When</th><th>Status</th><th>Action</th></tr></thead><tbody></tbody></table>
+      <table id="bookings"><thead><tr><th>ID</th><th>Mentor</th><th>Mentee</th><th>Subject</th><th>Score</th><th>Time Slot</th><th>When</th><th>Status</th><th>Action</th></tr></thead><tbody></tbody></table>
     </div>
+
+    <!-- ── Time Slot Management ──────────────────────────────────────── -->
+    <h3 class="section">Time Slot Management</h3>
+    <div>
+      <label>Select mentor to manage slots:</label>
+      <select id="slot-mentor-select" class="mentor-select">
+        <option value="">— choose a mentor —</option>
+      </select>
+      <button id="load-slots-btn" style="margin-left:8px">Load Slots</button>
+
+      <div id="slot-section" style="display:none;margin-top:14px">
+        <h4 id="slot-section-title" style="margin:0 0 8px"></h4>
+
+        <div class="slot-form">
+          <label>Day of week
+            <select id="slot-day" class="mentor-select" style="margin-top:2px">
+              <option value="">— pick a day —</option>
+              <option>Monday</option>
+              <option>Tuesday</option>
+              <option>Wednesday</option>
+              <option>Thursday</option>
+              <option>Friday</option>
+              <option>Saturday</option>
+              <option>Sunday</option>
+            </select>
+          </label>
+          <label>Start time (1-hour slot)
+            <input type="time" id="slot-start" step="3600" />
+          </label>
+          <button type="button" id="add-slot-btn" style="align-self:flex-end;margin-top:0">Add Slot</button>
+        </div>
+
+        <table id="slots-table" style="margin-top:12px">
+          <thead><tr><th>ID</th><th>Day</th><th>Start</th><th>End</th><th>Status</th><th>Action</th></tr></thead>
+          <tbody id="slots-tbody"></tbody>
+        </table>
+      </div>
     </div>
 
     <script>
       const API = 'http://localhost:8000/admin';
       const tableBody = document.querySelector('#mentors tbody');
+      let allMentors = [];
+
       async function load(){
         const r = await fetch(API + '/mentors');
-        const data = await r.json();
+        allMentors = await r.json();
         tableBody.innerHTML = '';
-        data.forEach(m => {
+
+        // Populate mentor select for slots section
+        const sel = document.getElementById('slot-mentor-select');
+        const current = sel.value;
+        sel.innerHTML = '<option value="">— choose a mentor —</option>';
+        allMentors.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m.name;
+          opt.textContent = `${m.name} (${m.subject}, Gr.${m.grade})`;
+          sel.appendChild(opt);
+        });
+        if (current) sel.value = current;
+
+        allMentors.forEach(m => {
           const tr = document.createElement('tr');
           tr.innerHTML = `<td>${m.name}</td><td>${m.grade}</td><td>${m.subject}</td><td>${m.qualifications}</td><td>${m.available? 'Yes':'No'}</td><td></td>`;
           const td = tr.querySelector('td:last-child');
@@ -52,6 +118,7 @@
         });
         loadBookings();
       }
+
       async function loadBookings(){
         const bbody = document.querySelector('#bookings tbody');
         const r = await fetch(API + '/bookings');
@@ -59,7 +126,7 @@
         bbody.innerHTML = '';
         data.forEach(b => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${b.id}</td><td>${b.mentor_name}</td><td>${b.mentee_name}</td><td>${b.subject}</td><td>${Math.round((b.match_score||0)*100)}%</td><td>${b.created_at}</td><td>${b.status||'active'}</td><td></td>`;
+          tr.innerHTML = `<td>${b.id}</td><td>${b.mentor_name}</td><td>${b.mentee_name}</td><td>${b.subject}</td><td>${Math.round((b.match_score||0)*100)}%</td><td>${b.slot_label || '—'}</td><td>${b.created_at}</td><td>${b.status||'active'}</td><td></td>`;
           const td = tr.querySelector('td:last-child');
           if((b.status||'active') === 'active'){
             const cancel = document.createElement('button');
@@ -75,6 +142,71 @@
           bbody.appendChild(tr);
         });
       }
+
+      // ── Slot management ──────────────────────────────────────────────
+      document.getElementById('load-slots-btn').onclick = loadSlotsForSelectedMentor;
+
+      async function loadSlotsForSelectedMentor() {
+        const mentorName = document.getElementById('slot-mentor-select').value;
+        if (!mentorName) { alert('Please select a mentor first.'); return; }
+        await loadSlots(mentorName);
+      }
+
+      async function loadSlots(mentorName) {
+        const section = document.getElementById('slot-section');
+        const title = document.getElementById('slot-section-title');
+        const tbody = document.getElementById('slots-tbody');
+
+        section.style.display = 'block';
+        title.textContent = `Slots for: ${mentorName}`;
+
+        const r = await fetch(API + `/mentors/${encodeURIComponent(mentorName)}/slots?all=true`);
+        const slots = await r.json();
+        tbody.innerHTML = '';
+        if (!slots.length) {
+          tbody.innerHTML = '<tr><td colspan="6" style="color:#6b7280;font-style:italic">No slots yet — add one above.</td></tr>';
+          return;
+        }
+        slots.forEach(s => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${s.id}</td><td>${s.day_of_week}</td><td>${s.start_time}</td><td>${s.end_time}</td><td>${s.available ? '🟢 Available' : '🔴 Booked'}</td><td></td>`;
+          const td = tr.querySelector('td:last-child');
+          if (s.available) {
+            const del = document.createElement('button');
+            del.textContent = 'Delete';
+            del.className = 'del-btn';
+            del.onclick = async () => {
+              if (!confirm(`Delete slot ${s.slot_date} ${s.start_time}–${s.end_time}?`)) return;
+              await fetch(API.replace('/admin','') + `/admin/slots/${s.id}`, {method:'DELETE'});
+              loadSlots(mentorName);
+            };
+            td.appendChild(del);
+          } else {
+            td.textContent = '—';
+          }
+          tbody.appendChild(tr);
+        });
+      }
+
+      document.getElementById('add-slot-btn').onclick = async () => {
+        const mentorName = document.getElementById('slot-mentor-select').value;
+        const dayOfWeek  = document.getElementById('slot-day').value;
+        const startTime  = document.getElementById('slot-start').value;
+        if (!mentorName) { alert('Select a mentor first.'); return; }
+        if (!dayOfWeek || !startTime) { alert('Please choose a day and start time.'); return; }
+        const r = await fetch(API + `/mentors/${encodeURIComponent(mentorName)}/slots`, {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({day_of_week: dayOfWeek, start_time: startTime}),
+        });
+        if (!r.ok) {
+          const err = await r.json();
+          alert('Error: ' + (err.detail || 'Unknown error'));
+          return;
+        }
+        loadSlots(mentorName);
+      };
+
       document.getElementById('refresh-bookings').onclick = loadBookings;
       document.getElementById('refresh').onclick = load;
       document.getElementById('add-form').onsubmit = async (e)=>{

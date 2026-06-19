@@ -404,9 +404,6 @@
         const btn = document.querySelector(`.slot-cell-btn[data-slot-id="${slotId}"][data-card="${cardIndex}"]`);
         if (btn) btn.classList.add('selected');
 
-        // Hide match panel immediately — it should not show again after choosing
-        document.getElementById('results-panel').style.display = 'none';
-
         const matchIndex = cardIndex + 1;
         const slotLabel = `${dayOfWeek}s ${startTime}–${endTime}`;
         addMsg('user', `Book ${matchIndex}`);

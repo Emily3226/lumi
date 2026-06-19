@@ -14,8 +14,9 @@ from typing import Any
 from langchain_core.runnables import RunnableBranch, RunnableLambda
 import requests
 
-from api.services import book_pairing_in_db, list_available_mentors, match_mentors
-from api.memory_store import get_memory_context
+from api.services import book_pairing_in_db, get_mentor_slots, list_available_mentors, match_mentors
+from api.memory_store import get_memory_context, clear_session_memory
+from api.email_service import send_booking_confirmation
 from rag.subject_utils import subject_key
 
 
@@ -65,13 +66,26 @@ _load_dotenv_file()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip() or "llama-3.1-8b-instant"
-UNKNOWN_REQUEST_MESSAGE = (
-    "I’m not sure how to help with that yet. Try asking for a mentor match, a contest problem, or a question from the knowledge file."
+AUXILIUM_SUPPORT_EMAIL = "auxilium.mentorship@gmail.com"
+SUPPORT_HANDOFF_MESSAGE = (
+    f"I’m not sure how to help with that yet. If you want to reach the Auxilium coordinators, email {AUXILIUM_SUPPORT_EMAIL}. "
+    "You can also try asking for a mentor match, a contest problem, or a question from the knowledge file."
 )
 
+UNKNOWN_REQUEST_MESSAGE = SUPPORT_HANDOFF_MESSAGE
+
 GROQ_NOT_CONFIGURED_MESSAGE = (
-    "I can hand off to the AI fallback, but `GROQ_API_KEY` is not set yet. Put it in the repo root `.env` file and restart the backend."
+    f"I can hand off to the AI fallback, but `GROQ_API_KEY` is not set yet. If you need help now, email the Auxilium coordinators at {AUXILIUM_SUPPORT_EMAIL}. "
+    "Put `GROQ_API_KEY` in the repo root `.env` file and restart the backend to re-enable AI fallback."
 )
+
+# Session states involved in the booking confirmation flow.
+BOOKING_FLOW_STATES = {
+    "awaiting_booking_name",
+    "awaiting_booking_email",
+    "awaiting_booking_confirmation",
+    "awaiting_slot_selection",
+}
 
 
 @dataclass
@@ -98,9 +112,10 @@ def extract_grade(text: str) -> int | None:
         "ten": 10,
         "eleven": 11,
         "twelve": 12,
+        "universiy": 13
     }
     for key, value in grade_words.items():
-        if key in t:
+        if re.search(rf"\b{re.escape(key)}\b", t):
             return value
     match = re.search(r"\b(9|10|11|12)\b", t)
     return int(match.group(1)) if match else None
@@ -109,6 +124,21 @@ def extract_grade(text: str) -> int | None:
 def extract_choice(text: str) -> int | None:
     match = re.search(r"\b(?:book\s*)?(1|2|3)\b", text.lower())
     return int(match.group(1)) if match else None
+
+
+def _extract_email(text: str) -> str | None:
+    match = re.search(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}", text)
+    return match.group(0) if match else None
+
+
+def is_affirmative(text: str) -> bool:
+    t = _normalize(text)
+    return bool(re.search(r"^(y|yes|yeah|yep|yup|correct|confirm|confirmed|right|sure|ok|okay|sounds good|that's right|thats right)\b", t))
+
+
+def is_negative(text: str) -> bool:
+    t = _normalize(text)
+    return bool(re.search(r"^(n|no|nope|nah|incorrect|wrong|that's wrong|thats wrong)\b", t))
 
 
 def is_help_request(text: str) -> bool:
@@ -154,7 +184,7 @@ def _target_agent(text: str) -> str | None:
 
 
 def is_booking_request(text: str, session: dict[str, Any]) -> bool:
-    if session.get("state") == "awaiting_booking_name":
+    if session.get("state") in BOOKING_FLOW_STATES:
         return True
     t = _normalize(text)
     return bool(re.search(r"\bbook\b|confirm pairing|reserve mentor", t))
@@ -170,7 +200,7 @@ def is_match_request(text: str) -> bool:
 
 def is_contest_request(text: str) -> bool:
     t = _normalize(text)
-    return bool(re.search(r"\bcontest\b|\bolympiad\b|\bcompetition\b|\bAMC\b|\bAIME\b|contest math|contest problems|practice contest", t))
+    return bool(re.search(r"\bcontest(s)?\b|\bolympiad\b|\bcompetition\b|\bAMC\b|\bAIME\b|contest math|contest problems|practice contest", t))
 
 
 def _token_set(text: str) -> set[str]:
@@ -197,6 +227,37 @@ def _compact_text(text: str) -> str:
 
 def _contains_any(tokens: set[str], words: set[str]) -> bool:
     return bool(tokens & words)
+
+
+def reset_session(session: dict[str, Any]) -> None:
+    """Wipe per-conversation session state and the persistent memory store.
+
+    Call this whenever a brand-new session/conversation begins (e.g. when the
+    frontend opens a fresh chat) so leftover state - mentee details, active
+    agent, pending bookings, persisted facts/examples from a previous session
+    - doesn't bleed into the new one.
+    """
+    session.clear()
+    session.update(
+        {
+            "state": "idle",
+            "subject": None,
+            "grade": None,
+            "name": None,
+            "query_text": None,
+            "matches": [],
+            "active_agent": "general",
+            "pending_match_step": None,
+            "pending_booking_choice": None,
+            "pending_mentee_email": None,
+            "pending_slot_id": None,
+            "messages": [],
+        }
+    )
+    try:
+        clear_session_memory()
+    except Exception:
+        logger.exception("Failed to clear persistent session memory")
 
 
 def _build_memory_context(session: dict[str, Any], limit: int = 24, max_chars: int = 4000) -> str:
@@ -233,110 +294,6 @@ def _build_memory_context(session: dict[str, Any], limit: int = 24, max_chars: i
 
     return "\n\n".join(blocks)
 
-
-EDUCATION_SCOPE_HINTS = {
-    "school",
-    "class",
-    "classroom",
-    "course",
-    "program",
-    "programs",
-    "lesson",
-    "teacher",
-    "student",
-    "homework",
-    "assignment",
-    "worksheet",
-    "quiz",
-    "test",
-    "exam",
-    "notes",
-    "study",
-    "learn",
-    "tutor",
-    "mentor",
-    "math",
-    "science",
-    "biology",
-    "chemistry",
-    "physics",
-    "english",
-    "history",
-    "geography",
-    "computer science",
-    "programming",
-    "coding",
-    "calculus",
-    "algebra",
-    "geometry",
-    "trigonometry",
-    "essay",
-    "grammar",
-    "contest",
-    "practice",
-    "question",
-    "grade",
-    "ap",
-    "ap program",
-    "advanced placement",
-    "ib",
-    "ib program",
-    "international baccalaureate",
-    "pre-ib",
-    "pre ib",
-    "dp",
-    "myp",
-    "cp",
-    "school work",
-    "school-related",
-    "auxilium",
-    "app",
-    "account",
-    "login",
-    "profile",
-    "settings",
-    "agent",
-    "mode",
-    "memory",
-    "booking",
-    "session",
-    "support",
-    "help",
-    "feedback",
-    "bug",
-    "issue",
-    "feature",
-    "switch"
-    "university",
-}
-
-CONVERSATIONAL_SCOPE_HINTS = {
-    "hello",
-    "hi",
-    "hey",
-    "thanks",
-    "thank you",
-    "good morning",
-    "good afternoon",
-    "good evening",
-    "how are you",
-    "what can you do",
-    "tell me",
-    "can you",
-    "could you",
-    "what do you think",
-    "chat",
-    "conversation",
-    "remember",
-    "recall",
-    "what do you remember",
-    "memory",
-    "opinion",
-    "joke",
-    "story",
-    "random",
-    "casual",
-}
 
 SIMPLE_SMALL_TALK_HINTS = {
     "hello",
@@ -386,11 +343,6 @@ MATCH_QUERY_HINT_WORDS = {
     "grammar",
 }
 
-OUT_OF_SCOPE_MESSAGE = (
-    "I'm built for education and Auxilium tasks only, so I can't help with that request. "
-    "If you want, I can help with tutoring, school subjects, contest problems, or mentor matching."
-)
-
 
 def _is_simple_small_talk(message: str) -> bool:
     normalized = _normalize(message)
@@ -404,19 +356,6 @@ def _is_simple_small_talk(message: str) -> bool:
         return True
 
     return False
-
-
-def _is_in_scope_of_education(message: str) -> bool:
-    normalized = _normalize(message)
-    if _is_simple_small_talk(message):
-        return True
-    if normalized and any(hint in normalized for hint in CONVERSATIONAL_SCOPE_HINTS):
-        return True
-    if normalized and re.search(r"\b(what is|what are|how does|how do|why is|why are|define|definition|explain|tell me about)\b", normalized):
-        return True
-    if _is_date_or_time_question(message) or _is_transformation_request(message):
-        return True
-    return _contains_any(_token_set(message), EDUCATION_SCOPE_HINTS)
 
 
 def _load_general_knowledge_entries() -> list[dict[str, str]]:
@@ -532,6 +471,16 @@ def _groq_api_key() -> str:
     return os.getenv("GROQ_API_KEY", GROQ_API_KEY).strip()
 
 
+def _format_slot_list(slots: list[dict]) -> str:
+    """Format a list of weekly time slots as a numbered list for chat display."""
+    if not slots:
+        return "(No slots available)"
+    lines = []
+    for i, slot in enumerate(slots, 1):
+        lines.append(f"{i}. {slot['day_of_week']}s  {slot['start_time']}–{slot['end_time']}")
+    return "\n".join(lines)
+
+
 class MentorTaskAgents:
     def __init__(self) -> None:
         self.router = RunnableBranch(
@@ -559,12 +508,41 @@ class MentorTaskAgents:
             session["pending_match_step"] = None
             session["matches"] = []
             session["state"] = "idle"
-        elif agent == "match" and session.get("state") not in {"awaiting_match_details", "showing_results", "awaiting_booking_name"}:
+        elif agent == "match" and session.get("state") not in {
+            "awaiting_match_details",
+            "showing_results",
+            *BOOKING_FLOW_STATES,
+        }:
             session["pending_match_step"] = None
             session["state"] = "idle"
 
+    def _reset_match_flow(self, session: dict[str, Any]) -> None:
+        session["subject"] = None
+        session["grade"] = None
+        session["name"] = None
+        session["query_text"] = None
+        session["matches"] = []
+        session["pending_booking_choice"] = None
+        session["pending_mentee_email"] = None
+        session["pending_match_step"] = "grade"
+        session["state"] = "awaiting_match_details"
+
+    def _message_has_match_details(self, message: str) -> bool:
+        return bool(extract_grade(message) or subject_key(message) or self._extract_name(message) or extract_choice(message))
+
     def _intent_for(self, message: str, session: dict[str, Any], forced_agent: str | None = None) -> str:
+        if session.get("state") in BOOKING_FLOW_STATES:
+            return "search"
         if is_agent_switch_request(message):
+            return "general"
+        if is_restart_request(message):
+            return "general"
+        if is_contest_request(message):
+            return "general"
+        # If user asks "how do I book" or similar, treat it as a general question, not an actionable booking command
+        if re.search(r"\bhow\b", message, re.I) and re.search(r"\bbook\b", message, re.I):
+            return "general"
+        if is_help_request(message) or is_list_request(message):
             return "general"
         if forced_agent == "general":
             return "general"
@@ -572,18 +550,13 @@ class MentorTaskAgents:
             return "search"
         if session.get("active_agent") == "match":
             return "search"
-        if is_restart_request(message):
-            return "general"
-        # If user asks "how do I book" or similar, treat it as a general question, not an actionable booking command
-        if re.search(r"\bhow\b", message, re.I) and re.search(r"\bbook\b", message, re.I):
-            return "general"
-        if is_help_request(message) or is_list_request(message):
-            return "general"
+        if session.get("pending_match_step") in {"grade", "subject"}:
+            return "search"
         if is_booking_request(message, session):
             return "search"
         if is_match_request(message):
             return "search"
-        if extract_grade(message) and subject_key(message):
+        if extract_grade(message) or subject_key(message):
             return "search"
         return "general"
 
@@ -601,34 +574,35 @@ class MentorTaskAgents:
                         "Ask me for a specific contest problem, a solution explanation, or a practice set."
                     )
                 elif target == "match":
+                    session["subject"] = None
+                    session["grade"] = None
+                    session["name"] = None
+                    session["query_text"] = None
+                    session["matches"] = []
+                    session["pending_booking_choice"] = None
+                    session["pending_mentee_email"] = None
                     reply = (
                         "Switched to the Match agent.\n\n"
                         "What grade is the mentee in?"
                     )
                     session["pending_match_step"] = "grade"
                 else:
+                    session["pending_match_step"] = None
+                    session["matches"] = []
+                    session["state"] = "idle"
                     reply = (
                         "Switched to the General agent.\n\n"
                         "You can ask me questions from the knowledge file or request another mode anytime."
                     )
                 return AgentResult(
                     reply=reply,
-                    state="awaiting_match_details" if target == "match" else session.get("state", "idle"),
+                    state="awaiting_match_details" if target == "match" else "idle",
                     active_agent=target,
-                    booking_state="needs_grade_and_subject" if target == "match" else session.get("state", "idle"),
+                    booking_state="needs_grade_and_subject" if target == "match" else "idle",
                 )
 
-        if not _is_in_scope_of_education(message):
-            return AgentResult(
-                reply=OUT_OF_SCOPE_MESSAGE,
-                state=session.get("state", "idle"),
-                booking_state=session.get("state", "idle"),
-                active_agent=session.get("active_agent", "general"),
-            )
-
         if is_restart_request(message):
-            session.clear()
-            session.update({"state": "idle", "subject": None, "grade": None, "name": None, "matches": [], "active_agent": "general", "pending_match_step": None})
+            reset_session(session)
             return AgentResult(
                 reply=(
                     "Sure. We can start over.\n\n"
@@ -762,13 +736,13 @@ class MentorTaskAgents:
             memory_context = f"Use the following conversation memory when answering.\n{memory_context}\n\n"
 
         prompt = (
-            f"You are Lumi's general fallback agent. {date_context}"
+            f"You are Lumi's general fallback agent for education and Auxilium support. {date_context}"
             f"{memory_context}"
-            "The local knowledge file did not contain an answer for this question."
-            " Provide a concise, helpful reply to the user's question using any recent conversation context supplied. "
-            "Do not refuse to answer; if uncertain, give a best-effort response and indicate uncertainty clearly. "
-            "Do not perform mentor-matching or contest problem solving unless the user explicitly requests switching modes. "
-            "For casual messages like greetings, respond briefly and ask how you can help."
+            "Use this assistant for school subjects, tutoring, contest problems, mentor matching, and Auxilium app help. "
+            "If the user is asking for casual conversation, greetings, or profile-related updates, answer briefly and naturally. "
+            "If the user asks something outside education or Auxilium, politely decline and redirect them back to tutoring, school, contests, mentor matching, or app support. "
+            "The local knowledge file did not contain an answer for this question. Provide a concise, helpful reply using any recent conversation context supplied. "
+            "If uncertain, give a best-effort response and say so clearly."
         )
         groq_api_key = _groq_api_key()
         if not groq_api_key:
@@ -817,6 +791,23 @@ class MentorTaskAgents:
                         return str(content).strip()
         return None
 
+    def _build_booking_summary(self, session: dict[str, Any], mentor: dict[str, Any]) -> str:
+        mentee_name = session.get("name") or "Mentee"
+        mentee_email = session.get("pending_mentee_email") or ""
+        subject = session.get("subject") or mentor["subject"]
+        grade = int(session.get("grade") or 0)
+        slot_label = session.get("pending_slot_label") or "No slot selected"
+        return (
+            "Here's a summary of the booking:\n\n"
+            f"Mentee: {mentee_name}\n"
+            f"Mentee email: {mentee_email}\n"
+            f"Grade: {grade}\n"
+            f"Subject: {subject}\n"
+            f"Mentor: {mentor['name']} (Grade {mentor['grade']})\n"
+            f"Time slot: {slot_label}\n\n"
+            "Is this correct? (yes/no)"
+        )
+
     def _search_agent(self, context: dict[str, Any]) -> AgentResult:
         message = context["message"].strip()
         session = context["session"]
@@ -854,29 +845,187 @@ class MentorTaskAgents:
                 active_agent=session.get("active_agent", "match"),
             )
 
+        if session.get("active_agent") == "match" and not is_booking_request(message, session):
+            has_match_details = self._message_has_match_details(message)
+            if session.get("pending_match_step") is None and not has_match_details:
+                self._reset_match_flow(session)
+                return AgentResult(
+                    reply="What grade is the mentee in?",
+                    state="awaiting_match_details",
+                    matches=[],
+                    booking_state="needs_grade",
+                    active_agent="match",
+                )
+
+        # ------------------------------------------------------------------
+        # Slot selection: user picks a time slot after choosing a mentor
+        # ------------------------------------------------------------------
+        if session.get("state") == "awaiting_slot_selection":
+            pending_slots = session.get("pending_slots", [])
+            # Accept a number like "1", "2", ... or "slot 1" etc.
+            slot_choice_match = re.search(r"\b(\d+)\b", message)
+            if not slot_choice_match or not pending_slots:
+                slot_lines = _format_slot_list(pending_slots)
+                return AgentResult(
+                    reply=f"Please enter the number of the time slot you want.\n\n{slot_lines}",
+                    state="awaiting_slot_selection",
+                    matches=matches,
+                    booking_state="awaiting_slot",
+                    active_agent=session.get("active_agent", "general"),
+                )
+
+            slot_idx = int(slot_choice_match.group(1)) - 1
+            if slot_idx < 0 or slot_idx >= len(pending_slots):
+                slot_lines = _format_slot_list(pending_slots)
+                return AgentResult(
+                    reply=f"That number isn't in the list. Please choose between 1 and {len(pending_slots)}.\n\n{slot_lines}",
+                    state="awaiting_slot_selection",
+                    matches=matches,
+                    booking_state="awaiting_slot",
+                    active_agent=session.get("active_agent", "general"),
+                )
+
+            chosen_slot = pending_slots[slot_idx]
+            session["pending_slot_id"] = chosen_slot["id"]
+            session["pending_slot_label"] = f"{chosen_slot['day_of_week']}s  {chosen_slot['start_time']}–{chosen_slot['end_time']}"
+            session["state"] = "awaiting_booking_name"
+            return AgentResult(
+                reply=f"Great — you picked **{chosen_slot['day_of_week']}s {chosen_slot['start_time']}–{chosen_slot['end_time']}**.\n\nWhat is the mentee's name so I can save the booking?",
+                state="awaiting_booking_name",
+                matches=matches,
+                booking_state="awaiting_name",
+                active_agent=session.get("active_agent", "general"),
+            )
+
+        # ------------------------------------------------------------------
+        # Booking confirmation flow: name -> email -> confirmation -> booked
+        # ------------------------------------------------------------------
         if session.get("state") == "awaiting_booking_name":
             mentee_name = message.strip().title()
             if len(mentee_name) < 2:
-                return AgentResult(reply="Please enter the mentee's name.", state="awaiting_booking_name", matches=matches, booking_state="awaiting_name")
+                return AgentResult(
+                    reply="Please enter the mentee's name.",
+                    state="awaiting_booking_name",
+                    matches=matches,
+                    booking_state="awaiting_name",
+                    active_agent=session.get("active_agent", "general"),
+                )
 
             booking_choice = int(session.get("pending_booking_choice") or 1)
             if booking_choice < 1 or booking_choice > len(matches):
                 return AgentResult(reply="I lost the selected mentor. Please run the search again.", state="idle", matches=[], booking_state="booking_lost")
 
+            session["name"] = mentee_name
+            session["state"] = "awaiting_booking_email"
+            return AgentResult(
+                reply=f"Thanks, {mentee_name}. What is the mentee's email address so I can send the booking confirmation?",
+                state="awaiting_booking_email",
+                matches=matches,
+                booking_state="awaiting_email",
+                active_agent=session.get("active_agent", "general"),
+            )
+
+        if session.get("state") == "awaiting_booking_email":
+            booking_choice = int(session.get("pending_booking_choice") or 1)
+            if booking_choice < 1 or booking_choice > len(matches):
+                return AgentResult(reply="I lost the selected mentor. Please run the search again.", state="idle", matches=[], booking_state="booking_lost")
+
+            mentee_email = _extract_email(message)
+            if not mentee_email:
+                return AgentResult(
+                    reply="That doesn't look like a valid email address. Please enter the mentee's email (e.g. name@example.com).",
+                    state="awaiting_booking_email",
+                    matches=matches,
+                    booking_state="awaiting_email",
+                    active_agent=session.get("active_agent", "general"),
+                )
+
+            session["pending_mentee_email"] = mentee_email
+            session["state"] = "awaiting_booking_confirmation"
+
             mentor = matches[booking_choice - 1]
+            return AgentResult(
+                reply=self._build_booking_summary(session, mentor),
+                state="awaiting_booking_confirmation",
+                matches=matches,
+                booking_state="awaiting_confirmation",
+                active_agent=session.get("active_agent", "general"),
+            )
+
+        if session.get("state") == "awaiting_booking_confirmation":
+            booking_choice = int(session.get("pending_booking_choice") or 1)
+            if booking_choice < 1 or booking_choice > len(matches):
+                return AgentResult(reply="I lost the selected mentor. Please run the search again.", state="idle", matches=[], booking_state="booking_lost")
+
+            if is_negative(message):
+                self._reset_match_flow(session)
+                session["active_agent"] = "match"
+                return AgentResult(
+                    reply="No problem - let's try again. What grade is the mentee in?",
+                    state="awaiting_match_details",
+                    matches=[],
+                    booking_state="needs_grade",
+                    active_agent="match",
+                )
+
+            if not is_affirmative(message):
+                mentor = matches[booking_choice - 1]
+                return AgentResult(
+                    reply="Sorry, I didn't catch that. " + self._build_booking_summary(session, mentor),
+                    state="awaiting_booking_confirmation",
+                    matches=matches,
+                    booking_state="awaiting_confirmation",
+                    active_agent=session.get("active_agent", "general"),
+                )
+
+            mentor = matches[booking_choice - 1]
+            mentee_name = session.get("name") or "Mentee"
+            mentee_email = session.get("pending_mentee_email") or ""
             subject = session.get("subject") or mentor["subject"]
             grade = int(session.get("grade") or 0)
-            self._save_booking(session, mentor, mentee_name)
+
+            self._save_booking(session, mentor, mentee_name, mentee_email)
+
+            email_sent = False
+            try:
+                email_sent = send_booking_confirmation(
+                    mentee_email=mentee_email,
+                    mentee_name=mentee_name,
+                    mentor_name=mentor["name"],
+                    subject=subject,
+                    grade=grade,
+                    slot_label=session.get("pending_slot_label") or "",
+                )
+            except Exception:
+                logger.exception("Failed to send booking confirmation email")
+
             self._reset_booking_state(session)
+            session["active_agent"] = "general"
+
+            reply_lines = [
+                "Booked!",
+                "",
+                f"{mentee_name} -> {mentor['name']}",
+                f"{subject} - Grade {grade} -> Grade {mentor['grade']}",
+            ]
+            if mentee_email:
+                if email_sent:
+                    reply_lines.append("")
+                    reply_lines.append(f"A confirmation email has been sent to {mentee_email}.")
+                else:
+                    reply_lines.append("")
+                    reply_lines.append(
+                        "I couldn't send the confirmation email automatically, but the booking is saved."
+                    )
+            reply_lines.append("")
+            reply_lines.append("Is there anything else I can help you with?")
+
             return AgentResult(
-                reply=(
-                    f"Booked!\n\n{mentee_name} -> {mentor['name']}\n"
-                    f"{subject} - Grade {grade} -> Grade {mentor['grade']}"
-                ),
+                reply="\n".join(reply_lines),
                 state="idle",
                 matches=[],
                 booking_state="booked",
-                active_agent=session.get("active_agent", "general"),
+                active_agent="general",
             )
 
         if matches and choice:
@@ -888,30 +1037,57 @@ class MentorTaskAgents:
                     booking_state="awaiting_choice",
                 )
 
+            session["pending_booking_choice"] = choice
             mentor = matches[choice - 1]
-            mentee_name = session.get("name")
-            if not mentee_name:
-                session["pending_booking_choice"] = choice
+
+            # Fetch available time slots for the chosen mentor
+            try:
+                available_slots = get_mentor_slots(mentor["name"], only_available=True)
+            except Exception:
+                available_slots = []
+
+            if available_slots:
+                session["pending_slots"] = available_slots
+                session["state"] = "awaiting_slot_selection"
+                slot_lines = _format_slot_list(available_slots)
+                return AgentResult(
+                    reply=f"Great choice! **{mentor['name']}** has the following available time slots. Enter the number to pick one:\n\n{slot_lines}",
+                    state="awaiting_slot_selection",
+                    matches=matches,
+                    booking_state="awaiting_slot",
+                    active_agent=session.get("active_agent", "general"),
+                )
+
+            # No slots configured — skip straight to name collection
+            session["pending_slot_id"] = None
+            session["pending_slot_label"] = "To be arranged"
+
+            if not session.get("name"):
                 session["state"] = "awaiting_booking_name"
                 return AgentResult(
                     reply="What is the mentee's name so I can save the booking?",
                     state="awaiting_booking_name",
                     matches=matches,
                     booking_state="awaiting_name",
+                    active_agent=session.get("active_agent", "general"),
                 )
 
-            subject = session.get("subject") or mentor["subject"]
-            grade = int(session.get("grade") or 0)
-            self._save_booking(session, mentor, mentee_name)
-            self._reset_booking_state(session)
+            if not session.get("pending_mentee_email"):
+                session["state"] = "awaiting_booking_email"
+                return AgentResult(
+                    reply=f"What is {session['name']}'s email address so I can send the booking confirmation?",
+                    state="awaiting_booking_email",
+                    matches=matches,
+                    booking_state="awaiting_email",
+                    active_agent=session.get("active_agent", "general"),
+                )
+
+            session["state"] = "awaiting_booking_confirmation"
             return AgentResult(
-                reply=(
-                    f"Booked!\n\n{mentee_name} -> {mentor['name']}\n"
-                    f"{subject} - Grade {grade} -> Grade {mentor['grade']}"
-                ),
-                state="idle",
-                matches=[],
-                booking_state="booked",
+                reply=self._build_booking_summary(session, mentor),
+                state="awaiting_booking_confirmation",
+                matches=matches,
+                booking_state="awaiting_confirmation",
                 active_agent=session.get("active_agent", "general"),
             )
 
@@ -922,6 +1098,7 @@ class MentorTaskAgents:
             session["grade"] = current_grade
         if current_subject:
             session["subject"] = current_subject
+            session["query_text"] = message.strip()
         if current_name:
             session["name"] = current_name
 
@@ -929,7 +1106,7 @@ class MentorTaskAgents:
         subject = current_subject or session.get("subject") or session.get("query_text")
 
         pending_step = session.get("pending_match_step")
-        if pending_step == "grade" and not grade:
+        if pending_step == "grade" and current_grade is None:
             return AgentResult(
                 reply="What grade is the mentee in?",
                 state="awaiting_match_details",
@@ -938,7 +1115,7 @@ class MentorTaskAgents:
                 active_agent=session.get("active_agent", "general"),
             )
 
-        if pending_step == "grade" and grade and not subject:
+        if pending_step == "grade" and current_grade is not None and not subject:
             session["pending_match_step"] = "subject"
             return AgentResult(
                 reply="What subject or skill do you want help with?",
@@ -948,7 +1125,7 @@ class MentorTaskAgents:
                 active_agent=session.get("active_agent", "general"),
             )
 
-        if pending_step == "subject" and not subject:
+        if pending_step == "subject" and not current_subject:
             return AgentResult(
                 reply="What subject or skill do you want help with?",
                 state="awaiting_match_details",
@@ -990,8 +1167,9 @@ class MentorTaskAgents:
         session["pending_match_step"] = None
 
         name = session.get("name") or current_name
+        match_query = (session.get("query_text") or session.get("subject") or message).strip()
 
-        mentee, ranked = match_mentors(name or "Mentee", message, mentee_grade=grade, top_k=3)
+        mentee, ranked = match_mentors(name or "Mentee", match_query, mentee_grade=grade, top_k=3)
         ranked = ranked[:3]
         session["matches"] = ranked
         session["grade"] = mentee["grade"] or session.get("grade")
@@ -1040,9 +1218,11 @@ class MentorTaskAgents:
 
         return False
 
-    def _save_booking(self, session: dict[str, Any], mentor: dict[str, Any], mentee_name: str) -> None:
+    def _save_booking(self, session: dict[str, Any], mentor: dict[str, Any], mentee_name: str, mentee_email: str = "") -> None:
         subject = session.get("subject") or mentor.get("subject") or "General"
         grade = int(session.get("grade") or 0)
+        slot_id = session.get("pending_slot_id")
+        slot_label = session.get("pending_slot_label") or ""
         book_pairing_in_db(
             mentor_name=mentor["name"],
             mentee_name=mentee_name,
@@ -1051,6 +1231,9 @@ class MentorTaskAgents:
             mentee_grade=grade,
             match_score=float(mentor.get("match_score") or 0.0),
             explanation=str(mentor.get("explanation") or "Potential match."),
+            mentee_email=mentee_email,
+            slot_id=slot_id if isinstance(slot_id, int) else None,
+            slot_label=slot_label,
         )
 
     def _reset_booking_state(self, session: dict[str, Any]) -> None:
@@ -1062,6 +1245,10 @@ class MentorTaskAgents:
                 "name": None,
                 "query_text": None,
                 "pending_booking_choice": None,
+                "pending_mentee_email": None,
+                "pending_slot_id": None,
+                "pending_slot_label": None,
+                "pending_slots": None,
                 "matches": [],
             }
         )

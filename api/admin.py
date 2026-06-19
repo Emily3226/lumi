@@ -4,6 +4,8 @@ import sqlite3
 import os
 from typing import Optional
 
+from api.services import add_mentor_slot, delete_mentor_slot, get_mentor_slots
+
 router = APIRouter()
 
 
@@ -66,7 +68,7 @@ def list_mentees():
 def list_bookings():
     conn = _get_db()
     rows = conn.execute(
-        "SELECT id, mentor_name, mentee_name, subject, mentor_grade, mentee_grade, match_score, explanation, created_at, status FROM bookings ORDER BY created_at DESC"
+        "SELECT id, mentor_name, mentee_name, subject, mentor_grade, mentee_grade, match_score, explanation, created_at, status, slot_id, slot_label FROM bookings ORDER BY created_at DESC"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -75,7 +77,7 @@ def list_bookings():
 @router.post("/bookings/{booking_id}/cancel")
 def cancel_booking(booking_id: int):
     conn = _get_db()
-    cur = conn.execute("SELECT id, mentor_name, status FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    cur = conn.execute("SELECT id, mentor_name, status, slot_id FROM bookings WHERE id = ?", (booking_id,)).fetchone()
     if not cur:
         conn.close()
         raise HTTPException(status_code=404, detail="Booking not found")
@@ -86,6 +88,9 @@ def cancel_booking(booking_id: int):
     # mark booking cancelled and release mentor
     conn.execute("UPDATE bookings SET status = 'cancelled' WHERE id = ?", (booking_id,))
     conn.execute("UPDATE mentors SET available = 1 WHERE name = ?", (cur['mentor_name'],))
+    # free the time slot too
+    if cur['slot_id']:
+        conn.execute("UPDATE mentor_timeslots SET available = 1 WHERE id = ?", (cur['slot_id'],))
     conn.commit()
     conn.close()
     return {"status": "cancelled", "id": booking_id}
@@ -124,3 +129,35 @@ def train_mentor_model():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Training failed: {str(e)}")
+
+
+# ── Time slot management ──────────────────────────────────────────────────────
+
+class SlotIn(BaseModel):
+    day_of_week: str  # e.g. "Monday", "Tuesday", ...
+    start_time: str   # HH:MM (24-hour)
+
+
+@router.get("/mentors/{name}/slots")
+def list_slots(name: str, all: bool = False):
+    """List weekly time slots for a mentor. Pass ?all=true to include booked slots."""
+    return get_mentor_slots(name, only_available=not all)
+
+
+@router.post("/mentors/{name}/slots")
+def create_slot(name: str, slot: SlotIn):
+    """Add a recurring weekly 1-hour slot for a mentor."""
+    try:
+        result = add_mentor_slot(name, slot.day_of_week, slot.start_time)
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
+@router.delete("/slots/{slot_id}")
+def remove_slot(slot_id: int):
+    """Delete a time slot by its ID."""
+    deleted = delete_mentor_slot(slot_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Slot not found")
+    return {"status": "deleted", "slot_id": slot_id}

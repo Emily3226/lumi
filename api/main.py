@@ -32,7 +32,7 @@ from api.admin import router as admin_router
 from api.chat import router as chat_router
 from api.contest_router import router as contest_router
 from api.contest_image_router import router as image_router
-from api.services import book_pairing_in_db, get_db, init_db, match_mentors
+from api.services import book_pairing_in_db, get_db, get_mentor_slots, init_db, match_mentors
 
 app = FastAPI(title="Lumi Mentor Matcher")
 app.include_router(chat_router)
@@ -74,6 +74,8 @@ class BookingRequest(BaseModel):
     mentee_grade: int
     match_score: float
     explanation: str
+    slot_id: int | None = None
+    slot_label: str = ""
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -116,6 +118,8 @@ def book_pairing(req: BookingRequest):
             mentee_grade=req.mentee_grade,
             match_score=req.match_score,
             explanation=req.explanation,
+            slot_id=req.slot_id,
+            slot_label=req.slot_label,
         )
     except ValueError as exc:
         detail = str(exc)
@@ -123,6 +127,12 @@ def book_pairing(req: BookingRequest):
         raise HTTPException(status_code=status_code, detail=detail)
 
     return {"status": "booked", "mentor": req.mentor_name, "mentee": req.mentee_name}
+
+
+@app.get("/mentors/{mentor_name}/slots")
+def get_slots(mentor_name: str):
+    """Return available (unbooked) 1-hour time slots for the given mentor."""
+    return get_mentor_slots(mentor_name, only_available=True)
 
 
 @app.get("/history")
