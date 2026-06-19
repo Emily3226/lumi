@@ -2,21 +2,24 @@
 api/contest_agent.py
 
 LangChain-style agent for Waterloo Math Contest knowledge.
-Handles:
-  1. Concept questions ("what is a geometric sequence?") — answered with
-     relevant contest problems as examples via RAG
-  2. Specific problem retrieval ("show me a 2022 Euclid combinatorics problem")
-  3. Step-by-step solution explanations ("explain the solution to Euclid 2022 Q5")
-  4. Weak-area matching ("I struggle with number theory, give me practice problems")
 
-Integrates with the existing MentorTaskAgents via a new "contest" intent.
+v5 — fixes:
+  - solution_text now always fetched via get_by_contest_year (not from query results
+    which don't include it)
+  - handle_search falls back to Groq for general questions instead of just RAG
+  - system prompt overhauled: Groq responds naturally like an AI assistant,
+    trusts problem/solution text it's given, never says a problem is impossible
+  - conversation history passed to every Groq call for better follow-up handling
 """
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from typing import Any
+
+from openai import OpenAI
 
 from rag.contest_retriever import (
     collection_count,
@@ -25,6 +28,83 @@ from rag.contest_retriever import (
     query as chroma_query,
 )
 from rag.contest_ingestor import TOPIC_KEYWORDS, CONTEST_GRADES
+
+# ── Groq client ───────────────────────────────────────────────────────────────
+
+_client = OpenAI(
+    api_key=os.environ.get("GROQ_API_KEY", ""),
+    base_url="https://api.groq.com/openai/v1",
+)
+
+_MODEL = "llama-3.3-70b-versatile"
+
+_SYSTEM_MATH = """\
+You are Lumi, a friendly and knowledgeable AI tutor specialising in Waterloo Math Contests \
+(Euclid, Fermat, Cayley, Pascal, Gauss, CIMC, CSMC, Fryer, Galois, Hypatia).
+
+Behave like a capable AI assistant — answer questions naturally and conversationally, \
+the same way ChatGPT or Gemini would. You can answer general math questions, explain \
+concepts, help with study strategies, and discuss contest problems.
+
+When you are given a contest problem and/or official solution in the prompt:
+- TRUST the provided text completely. It is the real, official problem and solution.
+- NEVER say a problem is impossible, unsolvable, or lacks information. It is a real \
+  competition problem with a real answer. Work with what you are given.
+- If only the problem text is given (no solution), reason through it yourself step by step.
+
+FORMATTING — always follow these rules:
+- Structure explanations with clear sections. Use blank lines between sections.
+- Number every step: "1.", "2.", "3." etc.
+- Put each step on its own line with a blank line after it.
+- Use plain Unicode math (×, ÷, √, ², ³, ≤, ≥, ≠, π, θ) — absolutely no LaTeX, \
+  no dollar signs, no backslashes.
+- For the key insight, write it on its own line starting with "Key insight:"
+- Keep each step focused on one idea. Do not write walls of text.
+- End with the final answer clearly stated on its own line: "Answer: ..."
+
+For concept explanations:
+- Definition first, then techniques, then a contest tip.
+- Use bullet points for lists of techniques or formulas.
+
+For general conversation:
+- Be concise and natural. No need for numbered steps unless explaining math.
+- Warm and encouraging tone suitable for a high school student."""
+
+
+def _grok(messages: list[dict], max_tokens: int = 1200) -> str:
+    """Call the Groq API and return the assistant text."""
+    try:
+        response = _client.chat.completions.create(
+            model=_MODEL,
+            max_tokens=max_tokens,
+            messages=[{"role": "system", "content": _SYSTEM_MATH}] + messages,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"_(AI explanation unavailable: {e})_"
+
+
+def _build_history(session: dict, n: int = 6) -> list[dict]:
+    """Return the last n turns of conversation history for Groq."""
+    history = []
+    for turn in session.get("messages", [])[-n:]:
+        role = turn.get("role", "user")
+        content = turn.get("content", "")
+        if content and role in ("user", "assistant"):
+            history.append({"role": role, "content": content})
+    return history
+
+
+def _get_full_problem(contest: str, year: int, prob_num: int) -> dict | None:
+    """
+    Fetch a single problem with full solution_text via get_by_contest_year.
+    This is necessary because chroma_query results don't include solution_text.
+    """
+    rows = get_by_contest_year(contest, year, n=30)
+    for r in rows:
+        if r.get("problem_number") == prob_num:
+            return r
+    return None
 
 
 # ── Result type ───────────────────────────────────────────────────────────────
@@ -37,41 +117,7 @@ class ContestResult:
     active_agent: str | None = None
 
 
-# ── Intent detection ──────────────────────────────────────────────────────────
-
-_CONTEST_NAMES = {
-    "euclid", "fryer", "galois", "hypatia", "gauss", "pascal", "cayley",
-    "fermat", "cimc", "csmc", "gauss7", "gauss8",
-}
-
-_EXPLAIN_WORDS = {
-    "explain", "walk", "step", "how", "why", "understand", "solution",
-    "solve", "work through", "show me how",
-}
-
-_CONCEPT_WORDS = {
-    "what is", "what are", "define", "definition", "concept", "theory",
-    "explain", "how does", "tell me about",
-}
-
-_PRACTICE_WORDS = {
-    "practice", "struggle", "weak", "bad at", "help with", "drill",
-    "exercises", "problems for", "questions on", "study", "prepare",
-}
-
-_SWITCH_TO_GENERAL_WORDS = {
-    "general agent",
-    "switch to general",
-    "back to general",
-    "return to general",
-    "go to general",
-    "main agent",
-}
-
-_LIST_WORDS = {
-    "list", "show", "give me", "find", "retrieve", "get", "display",
-    "available", "what contests",
-}
+# ── Regex helpers ─────────────────────────────────────────────────────────────
 
 _YEAR_RE = re.compile(r"\b(20\d{2}|19\d{2})\b")
 _PROB_NUM_RE = re.compile(r"\b(?:question|problem|q|#)\s*(\d{1,2})\b", re.I)
@@ -80,83 +126,154 @@ _CONTEST_RE = re.compile(
     re.I,
 )
 _TOPIC_RE = re.compile(
-    r"\b(" + "|".join(k for k in TOPIC_KEYWORDS) + r")\b", re.I
+    r"\b(" + "|".join(re.escape(k) for k in TOPIC_KEYWORDS) + r")\b", re.I
 )
-_GRADE_RE = re.compile(r"\bgrade\s*(\d{1,2})\b|\b(grade)\s+(\d{1,2})\b", re.I)
+_GRADE_RE = re.compile(r"\bgrade\s*(\d{1,2})\b", re.I)
+
+_EXPLAIN_WORDS = {
+    "explain", "walk through", "work through", "show me how",
+    "step by step", "why does", "how does", "break down",
+}
+
+# Words that explicitly mean "fetch this problem" — never trigger explain_solution
+_FETCH_WORDS = {
+    "show", "get", "give", "fetch", "retrieve", "display",
+    "find", "look up", "pull up",
+}
+_CONCEPT_WORDS = {"what is", "what are", "define", "definition", "concept",
+                  "how does", "tell me about"}
+_PRACTICE_WORDS = {"practice", "struggle", "weak", "bad at", "help with",
+                   "drill", "exercises", "problems for", "questions on",
+                   "study", "prepare"}
+_SWITCH_WORDS = {"general agent", "switch to general", "back to general",
+                 "return to general", "go to general", "main agent"}
+_SMALL_TALK = {"hello", "hi", "hey", "thanks", "thank you", "ok", "okay",
+               "what can you do", "help"}
+
+_CONTEST_MAP = {
+    "euclid": "Euclid", "fryer": "Fryer", "galois": "Galois",
+    "hypatia": "Hypatia", "gauss7": "Gauss7", "gauss8": "Gauss8",
+    "gauss": "Gauss", "pascal": "Pascal", "cayley": "Cayley",
+    "fermat": "Fermat", "cimc": "CIMC", "csmc": "CSMC",
+}
 
 
 def _norm(text: str) -> str:
     return " ".join(text.lower().strip().split())
 
+def _get_current_year() -> int:
+    from datetime import datetime
+    return datetime.now().year
 
 def _extract_year(text: str) -> int | None:
+    # Check for explicit 4-digit year first
     m = _YEAR_RE.search(text)
-    return int(m.group(1)) if m else None
-
+    if m:
+        return int(m.group(1))
+    
+    # Check for relative year references
+    norm = _norm(text)
+    current_year = _get_current_year()
+    
+    if "last year" in norm or "last year's" in norm:
+        return current_year - 1
+    if "this year" in norm or "this year's" in norm or "current year" in norm:
+        return current_year
+    if "year before last" in norm or "2 years ago" in norm:
+        return current_year - 2
+    
+    # Check for "N years ago" pattern
+    match = re.search(r"(\d+)\s*years?\s+ago", norm)
+    if match:
+        years_back = int(match.group(1))
+        return current_year - years_back
+    
+    return None
 
 def _extract_contest(text: str) -> str | None:
     m = _CONTEST_RE.search(text)
     if not m:
         return None
-    raw = m.group(1).lower().replace(" ", "")
-    # Normalise to title-case canonical names
-    _MAP = {
-        "euclid": "Euclid", "fryer": "Fryer", "galois": "Galois",
-        "hypatia": "Hypatia", "gauss7": "Gauss7", "gauss8": "Gauss8",
-        "gauss": "Gauss", "pascal": "Pascal", "cayley": "Cayley",
-        "fermat": "Fermat", "cimc": "CIMC", "csmc": "CSMC",
-    }
-    return _MAP.get(raw)
-
+    return _CONTEST_MAP.get(m.group(1).lower().replace(" ", ""))
 
 def _extract_topic(text: str) -> str | None:
     m = _TOPIC_RE.search(text)
     return m.group(1).lower().replace(" ", "_") if m else None
 
-
-def _extract_problem_number(text: str) -> int | None:
+def _extract_prob_num(text: str) -> int | None:
     m = _PROB_NUM_RE.search(text)
     return int(m.group(1)) if m else None
 
-
 def _extract_grade(text: str) -> int | None:
     m = _GRADE_RE.search(text)
-    if m:
-        return int(m.group(1) or m.group(3))
-    return None
+    return int(m.group(1)) if m else None
 
 
-def detect_intent(text: str) -> str:
-    """
-    Returns one of:
-      "list_contests"   — user wants to know what contests are available
-      "specific_problem"— user wants a specific contest+year+problem
-      "explain_solution"— user wants a step-by-step explanation
-      "practice"        — user wants problems to practice a topic/weakness
-      "concept"         — user asks what a concept is (answered with examples)
-      "search"          — generic semantic search fallback
-    """
+# ── Intent detection ──────────────────────────────────────────────────────────
+
+def detect_intent(text: str, session: dict) -> str:
     n = _norm(text)
-    tokens = set(n.split())
 
-    if any(w in n for w in ("what contests", "which contests", "available contests", "list contests")):
+    if any(w in n for w in _SWITCH_WORDS):
+        return "switch_general"
+
+    words = set(n.split())
+    if len(words) <= 4 and words & _SMALL_TALK and not _CONTEST_RE.search(n):
+        return "small_talk"
+
+    if any(w in n for w in ("what contests", "which contests",
+                             "available contests", "list contests")):
         return "list_contests"
+
+    has_active = bool(session.get("active_problem"))
+    has_contest_signal = bool(_CONTEST_RE.search(n) or _YEAR_RE.search(n))
+    if has_active and not has_contest_signal and _PROB_NUM_RE.search(n) is None:
+        if any(w in n for w in _EXPLAIN_WORDS | {"another", "alternative",
+                                                   "different", "why", "how",
+                                                   "what", "can you", "more"}):
+            return "followup"
+
     if _PROB_NUM_RE.search(n) and _CONTEST_RE.search(n):
+        # If the user is explicitly fetching (show/get/find), never explain
+        if any(w in n for w in _FETCH_WORDS):
+            return "specific_problem"
+        # Only explain if user explicitly used explanation language
         if any(w in n for w in _EXPLAIN_WORDS):
             return "explain_solution"
         return "specific_problem"
+
+    # "explain the solution to Euclid 2022" (no problem number) — still explain
     if any(w in n for w in _EXPLAIN_WORDS) and _CONTEST_RE.search(n):
         return "explain_solution"
+
+    # "solution to X" alone (no explain word) — just fetch the problem
+    if "solution" in n and _CONTEST_RE.search(n):
+        return "specific_problem"
+
     if any(w in n for w in _PRACTICE_WORDS):
         return "practice"
-    if any(n.startswith(w) for w in _CONCEPT_WORDS) or any(w in n for w in ("what is", "what are")):
+
+    if any(n.startswith(w) for w in _CONCEPT_WORDS) or \
+            any(w in n for w in ("what is", "what are")):
         return "concept"
-    if any(w in n for w in _SWITCH_TO_GENERAL_WORDS):
-        return "switch_general"
+
     return "search"
 
 
-# ── Intent handlers ───────────────────────────────────────────────────────────
+# ── Formatting ────────────────────────────────────────────────────────────────
+
+def _fmt_problem(result: dict, index: int | None = None) -> str:
+    prefix = f"**{index}.** " if index is not None else ""
+    prob_label = f"Problem {result['problem_number']}" if result["problem_number"] else "Problem"
+    lines = [f"{prefix}**{result['contest']} {result['year']} — {prob_label}**"]
+    if result.get("topics"):
+        lines.append(f"Topics: {', '.join(result['topics'])}")
+    if result.get("has_solution"):
+        lines.append("_Solution available — click Show solution below the image._")
+    else:
+        lines.append("_No solution available for this problem._")
+    return "\n".join(lines)
+
 
 def _unavailable_reply() -> ContestResult:
     return ContestResult(
@@ -170,55 +287,12 @@ def _unavailable_reply() -> ContestResult:
     )
 
 
-def _switch_general_reply() -> ContestResult:
-    return ContestResult(
-        reply=(
-            "Switched back to the General agent.\n\n"
-            "You can ask me a mentor, booking, or general education question next."
-        ),
-        intent="switch_general",
-        active_agent="general",
-    )
+# ── Intent handlers ───────────────────────────────────────────────────────────
 
-
-def _simple_small_talk_reply() -> ContestResult:
-    return ContestResult(
-        reply=(
-            "Hi. I can help with contest problems, explanations, or practice questions. "
-            "If you want to switch back, say 'back to general'."
-        ),
-        intent="small_talk",
-        active_agent="contest",
-    )
-
-
-def _format_problem(result: dict, index: int | None = None) -> str:
-    """Format a problem reference for the chat reply text (not the image)."""
-    prefix = f"**{index}.** " if index is not None else ""
-    prob_label = f"Problem {result['problem_number']}" if result["problem_number"] else "Problem"
-    lines = [f"{prefix}**{result['contest']} {result['year']} — {prob_label}**"]
-    if result.get("topics"):
-        lines.append(f"Topics: {', '.join(result['topics'])}")
-    has_sol = result.get("has_solution", False)
-    if has_sol:
-        lines.append("_Solution available — click Show solution below the image._")
-    else:
-        lines.append("_No solution available for this problem._")
-    return "\n".join(lines)
-
-
-def _format_solution_explanation(result: dict) -> str:
-    """Return a reply directing user to the solution image panel."""
-    prob_label = f"Problem {result['problem_number']}" if result["problem_number"] else "Problem"
-    has_sol = result.get("has_solution", False)
-    if not has_sol:
-        return (
-            f"No solution is available for **{result['contest']} {result['year']} — {prob_label}**."
-        )
-    return (
-        f"Here is **{result['contest']} {result['year']} — {prob_label}**. "
-        f"The solution is shown below — click **Show solution** to reveal it."
-    )
+def handle_small_talk(text: str, session: dict) -> ContestResult:
+    history = _build_history(session)
+    reply = _grok(history + [{"role": "user", "content": text}], max_tokens=200)
+    return ContestResult(reply=reply, intent="small_talk", active_agent="contest")
 
 
 def handle_list_contests() -> ContestResult:
@@ -227,72 +301,66 @@ def handle_list_contests() -> ContestResult:
         return _unavailable_reply()
     lines = ["Here are the indexed Waterloo contests:\n"]
     for item in available:
-        years_str = ", ".join(item["years"][:5])
-        if len(item["years"]) > 5:
-            years_str += f" ... (+{len(item['years']) - 5} more)"
+        years = item["years"]
+        years_str = ", ".join(years[:5])
+        if len(years) > 5:
+            years_str += f" … (+{len(years) - 5} more)"
         lines.append(f"- **{item['contest']}**: {years_str}")
     lines.append("\nAsk me to retrieve problems, explain solutions, or find practice questions!")
     return ContestResult(reply="\n".join(lines), intent="list_contests")
 
 
-def handle_specific_problem(text: str) -> ContestResult:
+def handle_specific_problem(text: str, session: dict) -> ContestResult:
     contest = _extract_contest(text)
     year = _extract_year(text)
-    prob_num = _extract_problem_number(text)
+    prob_num = _extract_prob_num(text)
     topic = _extract_topic(text)
 
     if not (contest or year or topic):
         return ContestResult(
-            reply="Please specify a contest name (e.g. Euclid, Fermat) and/or year to find a specific problem.",
+            reply="Please specify a contest name (e.g. Euclid, Fermat) and/or year.",
             intent="specific_problem",
         )
 
-    # If contest + year + problem number all given, do exact lookup first
     if contest and year and prob_num:
-        all_problems = get_by_contest_year(contest, year, n=30)
-        exact = [r for r in all_problems if r["problem_number"] == prob_num]
-        if exact:
-            result = exact[0]
-            reply = _format_problem(result)
+        result = _get_full_problem(contest, year, prob_num)
+        if result:
+            session["active_problem"] = result
             return ContestResult(
-                reply=reply,
+                reply=_fmt_problem(result),
                 problems=[result],
                 intent="specific_problem",
             )
-        # Not found in index - fall through to semantic search with helpful message
-        desc = f"{contest} {year} Problem {prob_num}"
         return ContestResult(
-            reply=f"Could not find **{desc}** in the database. Make sure the PDFs have been ingested and re-run ingestion with --clear.",
+            reply=f"Could not find **{contest} {year} Problem {prob_num}** in the database. "
+                  f"Make sure the PDFs have been ingested.",
             intent="specific_problem",
         )
 
-    # Semantic search fallback (no specific problem number, or partial info)
-    results = chroma_query(
-        text=text,
-        n_results=8,
-        contest=contest,
-        year=year,
-        topic=topic,
-    )
-
+    results = chroma_query(text=text, n_results=8, contest=contest, year=year, topic=topic)
     if not results:
         desc = " ".join(filter(None, [str(year) if year else None, contest]))
         return ContestResult(
-            reply=f"No problems found for {desc or 'that query'}. Make sure those PDFs have been ingested.",
+            reply=f"No problems found for {desc or 'that query'}.",
             intent="specific_problem",
         )
-
-    # Filter by problem number if given
     if prob_num:
         exact = [r for r in results if r["problem_number"] == prob_num]
         if exact:
             results = exact
 
-    lines = [f"Here {'is' if len(results) == 1 else 'are'} the matching problem{'s' if len(results) > 1 else ''}:\n"]
-    for i, result in enumerate(results[:3], 1):
-        lines.append(_format_problem(result, index=i))
-        lines.append("")
+    # Enrich top result with full solution_text
+    top = results[0]
+    if top.get("contest") and top.get("year") and top.get("problem_number"):
+        full = _get_full_problem(top["contest"], top["year"], top["problem_number"])
+        if full:
+            results[0] = full
 
+    session["active_problem"] = results[0]
+    lines = [f"Here {'is' if len(results) == 1 else 'are'} the matching problem(s):\n"]
+    for i, r in enumerate(results[:3], 1):
+        lines.append(_fmt_problem(r, index=i))
+        lines.append("")
     return ContestResult(
         reply="\n".join(lines).strip(),
         problems=results[:3],
@@ -300,70 +368,134 @@ def handle_specific_problem(text: str) -> ContestResult:
     )
 
 
-def handle_explain_solution(text: str) -> ContestResult:
+def handle_explain_solution(text: str, session: dict) -> ContestResult:
+    """
+    Fetch full problem + solution text via get_by_contest_year (not chroma_query,
+    which doesn't return solution_text), then ask Groq to explain step by step.
+    """
     contest = _extract_contest(text)
     year = _extract_year(text)
-    prob_num = _extract_problem_number(text)
+    prob_num = _extract_prob_num(text)
 
-    results = chroma_query(
-        text=text,
-        n_results=5,
-        contest=contest,
-        year=year,
-    )
+    # Try exact fetch first
+    result = None
+    if contest and year and prob_num:
+        result = _get_full_problem(contest, year, prob_num)
 
-    if not results:
+    # Fallback to semantic search, then re-fetch full record
+    if result is None:
+        results = chroma_query(text=text, n_results=5, contest=contest, year=year)
+        if not results:
+            return ContestResult(
+                reply="I couldn't find that problem. Try specifying the contest name and year.",
+                intent="explain_solution",
+            )
+        candidates = [r for r in results if r.get("has_solution")] or results
+        if prob_num:
+            exact = [r for r in candidates if r["problem_number"] == prob_num]
+            if exact:
+                candidates = exact
+        top = candidates[0]
+        # Re-fetch to get solution_text
+        if top.get("contest") and top.get("year") and top.get("problem_number"):
+            result = _get_full_problem(top["contest"], top["year"], top["problem_number"]) or top
+        else:
+            result = top
+
+    session["active_problem"] = result
+    prob_label = f"Problem {result['problem_number']}"
+    header = f"**{result['contest']} {result['year']} — {prob_label}**\n\n"
+
+    problem_text = result.get("document", "") or result.get("problem_text", "")
+    solution_text = result.get("solution_text", "") or ""
+
+    has_solution_text = bool(solution_text and solution_text.strip()
+                             and solution_text.strip() != problem_text.strip())
+
+    if has_solution_text:
+        prompt = (
+            f"Here is a Waterloo Math Contest problem with its official solution.\n\n"
+            f"PROBLEM:\n{problem_text}\n\n"
+            f"OFFICIAL SOLUTION:\n{solution_text}\n\n"
+            f"Explain this solution clearly. Start with a 'Key insight:' line, "
+            f"then walk through each step numbered. Each step on its own line. "
+            f"End with 'Answer: ...' on its own line."
+        )
+    elif result.get("has_solution"):
+        prompt = (
+            f"Here is a Waterloo Math Contest problem:\n\n"
+            f"PROBLEM:\n{problem_text}\n\n"
+            f"Solve this step by step. Start with a 'Key insight:' line, "
+            f"then number each step. Each step on its own line. "
+            f"End with 'Answer: ...' on its own line."
+        )
+    else:
         return ContestResult(
-            reply="I couldn't find that problem in the database. Try specifying the contest name and year.",
+            reply=header + "No solution is available for this problem in the database.",
+            problems=[result],
             intent="explain_solution",
         )
 
-    # Prefer the one with a solution and closest problem number match
-    with_solution = [r for r in results if r["has_solution"]]
-    candidates = with_solution or results
-
-    if prob_num:
-        exact = [r for r in candidates if r["problem_number"] == prob_num]
-        if exact:
-            candidates = exact
-
-    best = candidates[0]
-    explanation = _format_solution_explanation(best)
-
+    history = _build_history(session)
+    explanation = _grok(history + [{"role": "user", "content": prompt}], max_tokens=1500)
     return ContestResult(
-        reply=explanation,
-        problems=[best],
+        reply=header + explanation,
+        problems=[result],
         intent="explain_solution",
     )
 
 
-def handle_practice(text: str) -> ContestResult:
+def handle_followup(text: str, session: dict) -> ContestResult:
+    """Answer a follow-up question in the context of the active problem."""
+    active = session.get("active_problem", {})
+    prob_text = active.get("document", "") or active.get("problem_text", "")
+    sol_text = active.get("solution_text", "") or ""
+    prob_label = (
+        f"{active.get('contest', '')} {active.get('year', '')} "
+        f"Problem {active.get('problem_number', '')}"
+    ).strip()
+
+    context_parts = [f"The student is asking about: {prob_label}",
+                     f"\nPROBLEM:\n{prob_text}"]
+    if sol_text and sol_text.strip() != prob_text.strip():
+        context_parts.append(f"\nOFFICIAL SOLUTION:\n{sol_text}")
+    context = "\n".join(context_parts)
+
+    # Inject context as a system-level note before the conversation history
+    messages: list[dict] = [
+        {"role": "user", "content": f"[Context for this conversation]\n{context}"},
+        {"role": "assistant", "content": "Understood, I have the problem and solution context."},
+    ]
+    messages += _build_history(session)
+    messages.append({"role": "user", "content": text})
+
+    reply = _grok(messages, max_tokens=1200)
+    return ContestResult(reply=reply, intent="followup", active_agent="contest")
+
+
+def handle_practice(text: str, session: dict) -> ContestResult:
     topic = _extract_topic(text)
     grade = _extract_grade(text)
     contest = _extract_contest(text)
 
-    # Build a richer semantic query from the request
     query_text = text
     if topic:
         kws = TOPIC_KEYWORDS.get(topic, [])
         query_text = f"{text} {' '.join(kws[:5])}"
 
     results = chroma_query(
-        text=query_text,
-        n_results=8,
-        contest=contest,
-        grade=grade,
-        topic=topic,
+        text=query_text, n_results=8,
+        contest=contest, grade=grade, topic=topic,
     )
 
     if not results:
         desc = " ".join(filter(None, [topic, f"grade {grade}" if grade else None]))
         return ContestResult(
-            reply=f"No practice problems found for {desc or 'that topic'}. Try a different topic or make sure the PDFs are ingested.",
+            reply=f"No practice problems found for {desc or 'that topic'}. "
+                  f"Try a different topic or make sure the PDFs are ingested.",
             intent="practice",
         )
 
-    # Deduplicate by contest+year+problem_num, prefer variety
     seen: set[tuple] = set()
     deduped = []
     for r in results:
@@ -374,13 +506,28 @@ def handle_practice(text: str) -> ContestResult:
 
     topic_label = topic.replace("_", " ") if topic else "the requested area"
     grade_label = f" for grade {grade}" if grade else ""
-    lines = [f"Here are practice problems for **{topic_label}**{grade_label}:\n"]
 
-    for i, result in enumerate(deduped[:5], 1):
-        lines.append(_format_problem(result, index=i))
+    intro_prompt = (
+        f"A student wants to practice {topic_label}{grade_label} using Waterloo contest problems. "
+        f"Write 1-2 encouraging sentences introducing the practice set. "
+        f"Do not list the problems."
+    )
+    intro = _grok([{"role": "user", "content": intro_prompt}], max_tokens=100)
+
+    lines = [intro, ""]
+    for i, r in enumerate(deduped[:5], 1):
+        lines.append(_fmt_problem(r, index=i))
         lines.append("")
+    lines.append('_Ask me to "explain the solution" for any of these._')
 
-    lines.append('_Ask me to "explain the solution" for any of these to walk through it step by step._')
+    # Enrich first result with solution_text for follow-ups
+    top = deduped[0]
+    if top.get("contest") and top.get("year") and top.get("problem_number"):
+        full = _get_full_problem(top["contest"], top["year"], top["problem_number"])
+        if full:
+            deduped[0] = full
+    session["active_problem"] = deduped[0]
+
     return ContestResult(
         reply="\n".join(lines).strip(),
         problems=deduped[:5],
@@ -388,165 +535,109 @@ def handle_practice(text: str) -> ContestResult:
     )
 
 
-def handle_concept(text: str) -> ContestResult:
+def handle_concept(text: str, session: dict) -> ContestResult:
     topic = _extract_topic(text)
     results = chroma_query(text=text, n_results=3, topic=topic)
 
-    # Build a conceptual answer using Claude's knowledge, then attach examples
-    concept_reply = _concept_explanation(text, topic)
+    history = _build_history(session)
+    explanation = _grok(
+        history + [{"role": "user", "content": text}],
+        max_tokens=700,
+    )
 
     if results:
-        concept_reply += "\n\n**Example contest problems:**\n"
-        for i, result in enumerate(results[:2], 1):
-            concept_reply += "\n" + _format_problem(result, index=i) + "\n"
+        explanation += "\n\n**Example contest problems:**\n"
+        for i, r in enumerate(results[:2], 1):
+            explanation += "\n" + _fmt_problem(r, index=i) + "\n"
+        session["active_problem"] = results[0]
 
-    return ContestResult(reply=concept_reply, problems=results[:2] if results else None, intent="concept")
-
-
-def _concept_explanation(text: str, topic: str | None) -> str:
-    """Return a built-in explanation for common contest math topics."""
-    EXPLANATIONS = {
-        "algebra": (
-            "**Algebra** involves manipulating equations and expressions with variables. "
-            "In contest math, common algebra problems involve solving systems of equations, "
-            "working with polynomials, factoring, and finding roots. Key techniques include "
-            "substitution, completing the square, and Vieta's formulas."
-        ),
-        "number_theory": (
-            "**Number Theory** is the study of integers and their properties. "
-            "Contest problems often involve divisibility, prime factorization, modular arithmetic, "
-            "GCD/LCM, and Diophantine equations. Key theorems include Fermat's Little Theorem "
-            "and the Chinese Remainder Theorem."
-        ),
-        "geometry": (
-            "**Geometry** in contests covers both Euclidean (triangles, circles, polygons) and "
-            "coordinate geometry. Key skills: angle chasing, similarity and congruence, the "
-            "Pythagorean theorem, circle theorems (power of a point, inscribed angles), and "
-            "area formulas. Coordinate geometry converts geometry to algebra."
-        ),
-        "combinatorics": (
-            "**Combinatorics** is counting without listing everything. Core ideas: the "
-            "multiplication and addition principles, permutations, combinations (nCr), "
-            "the inclusion-exclusion principle, and the pigeonhole principle. "
-            "Probability is closely related — it's counting favourable outcomes over total outcomes."
-        ),
-        "sequences": (
-            "**Sequences & Series**: An arithmetic sequence has a constant difference between terms "
-            "(sum = n/2 × (first + last)). A geometric sequence has a constant ratio "
-            "(sum = a(rⁿ−1)/(r−1)). Contests also feature recursive sequences and telescoping sums."
-        ),
-        "calculus": (
-            "**Calculus** concepts appear in senior contests (Euclid, CSMC). Key ideas: "
-            "limits (what a function approaches), derivatives (instantaneous rate of change, "
-            "slope of tangent), and integrals (area under a curve). The chain rule, product rule, "
-            "and optimization (critical points where f'=0) are frequently tested."
-        ),
-        "trigonometry": (
-            "**Trigonometry** relates angles to side lengths in triangles. "
-            "The unit circle defines sin/cos/tan for all angles. Key identities: "
-            "sin²θ + cos²θ = 1, the sine rule (a/sin A = b/sin B), and the cosine rule. "
-            "Double-angle and sum formulas appear frequently in senior contests."
-        ),
-        "inequalities": (
-            "**Inequalities**: Common contest techniques include AM-GM (arithmetic mean ≥ geometric mean), "
-            "Cauchy-Schwarz, and the triangle inequality. Optimization problems often reduce to "
-            "proving or applying an inequality. Absolute value inequalities are also common."
-        ),
-        "logic": (
-            "**Proof & Logic**: Contest proofs use direct proof, proof by contradiction, "
-            "mathematical induction, and case analysis. 'If and only if' (iff) requires proving "
-            "both directions. Induction: prove a base case, then show if it holds for n it holds for n+1."
-        ),
-    }
-
-    if topic and topic in EXPLANATIONS:
-        return EXPLANATIONS[topic]
-
-    # Try to match key words in the question
-    for t, explanation in EXPLANATIONS.items():
-        kws = TOPIC_KEYWORDS.get(t, [])
-        if any(kw in text.lower() for kw in kws):
-            return explanation
-
-    return (
-        "That's a great math concept to explore! Here are some related contest problems "
-        "that might help illustrate it:"
+    return ContestResult(
+        reply=explanation,
+        problems=results[:2] if results else None,
+        intent="concept",
     )
 
 
-def handle_search(text: str) -> ContestResult:
-    """Generic semantic search fallback."""
+def handle_search(text: str, session: dict) -> ContestResult:
+    """
+    For messages that don't match a specific intent:
+    - If RAG finds relevant problems, show the cards only (no explanation)
+    - Otherwise, answer conversationally with Groq
+    """
     contest = _extract_contest(text)
     year = _extract_year(text)
     topic = _extract_topic(text)
     grade = _extract_grade(text)
 
+    # If the message mentions a contest/year/problem, route to specific_problem
+    # instead of doing a search — avoids the bot explaining things unprompted
+    if contest or year or _extract_prob_num(text):
+        return handle_specific_problem(text, session)
+
     results = chroma_query(
-        text=text,
-        n_results=5,
-        contest=contest,
-        year=year,
-        topic=topic,
-        grade=grade,
+        text=text, n_results=5,
+        contest=contest, year=year, topic=topic, grade=grade,
     )
 
-    if not results:
+    if results:
+        session["active_problem"] = results[0]
+        lines = ["Here are the most relevant problems I found:\n"]
+        for i, r in enumerate(results[:4], 1):
+            lines.append(_fmt_problem(r, index=i))
+            lines.append("")
         return ContestResult(
-            reply=(
-                "I couldn't find matching contest problems. Try:\n"
-                "- Specifying a contest name (Euclid, Fryer, Pascal, etc.)\n"
-                "- Naming a topic (geometry, number theory, combinatorics, etc.)\n"
-                "- Asking for practice problems on a subject you find difficult"
-            ),
+            reply="\n".join(lines).strip(),
+            problems=results[:4],
             intent="search",
         )
 
-    lines = ["Here are the most relevant problems I found:\n"]
-    for i, result in enumerate(results[:4], 1):
-        lines.append(_format_problem(result, index=i))
-        lines.append("")
-
-    return ContestResult(
-        reply="\n".join(lines).strip(),
-        problems=results[:4],
-        intent="search",
-    )
+    # No RAG results — answer conversationally
+    history = _build_history(session)
+    reply = _grok(history + [{"role": "user", "content": text}], max_tokens=800)
+    return ContestResult(reply=reply, intent="search")
 
 
-# ── Main entry point ──────────────────────────────────────────────────────────
+# ── Main agent ────────────────────────────────────────────────────────────────
 
 class ContestAgent:
-    """Drop-in agent for Waterloo contest math knowledge."""
 
     def run(self, message: str, session: dict[str, Any] | None = None) -> ContestResult:
-        if any(word in _norm(message) for word in _SWITCH_TO_GENERAL_WORDS):
-            return _switch_general_reply()
+        if session is None:
+            session = {}
 
-        if len(_norm(message).split()) <= 4 and any(word in _norm(message) for word in {"hello", "hi", "hey", "thanks", "thank you", "ok", "okay", "what can you do"}):
-            return _simple_small_talk_reply()
+        n = _norm(message)
+        if any(w in n for w in _SWITCH_WORDS):
+            return ContestResult(
+                reply="Switched back to the General agent. Ask me a mentor or booking question next.",
+                intent="switch_general",
+                active_agent="general",
+            )
+
+        intent = detect_intent(message, session)
+
+        if intent == "small_talk":
+            return handle_small_talk(message, session)
+        if intent == "concept":
+            return handle_concept(message, session)
 
         if collection_count() == 0:
-            # Still allow concept questions even without indexed data
-            intent = detect_intent(message)
-            if intent == "concept":
-                return handle_concept(message)
-            return _unavailable_reply()
-
-        intent = detect_intent(message)
+            # Still answer general questions even without DB
+            history = _build_history(session)
+            reply = _grok(history + [{"role": "user", "content": message}], max_tokens=800)
+            return ContestResult(reply=reply, intent="concept")
 
         if intent == "list_contests":
             return handle_list_contests()
         elif intent == "specific_problem":
-            return handle_specific_problem(message)
+            return handle_specific_problem(message, session)
         elif intent == "explain_solution":
-            return handle_explain_solution(message)
+            return handle_explain_solution(message, session)
+        elif intent == "followup":
+            return handle_followup(message, session)
         elif intent == "practice":
-            return handle_practice(message)
-        elif intent == "concept":
-            return handle_concept(message)
+            return handle_practice(message, session)
         else:
-            return handle_search(message)
+            return handle_search(message, session)
 
 
-# Singleton
 contest_agent = ContestAgent()

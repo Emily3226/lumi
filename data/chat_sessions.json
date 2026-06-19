@@ -749,5 +749,258 @@
         "content": "You've asked me this question before. From what I recall, your name is Jordan, and you're in grade 10. You also mentioned an interest in AP calculus. Is there something specific you'd like to talk about or ask regarding AP calculus?"
       }
     ]
+  },
+  "session_j9tkvm0": {
+    "state": "idle",
+    "subject": null,
+    "grade": null,
+    "name": null,
+    "active_agent": "contest",
+    "pending_match_step": null,
+    "query_text": null,
+    "pending_booking_choice": null,
+    "matches": [
+      {
+        "document": "Contest: Euclid 2023\nProblem 2\nTopics: algebra, number_theory, geometry, calculus, sequences\n\n(a)\nQ(5, 3) s t e\ndpo\nt o t e\ne seg\ne t w t\ne dpo\nts\n( , p) a d R(r, 5),\nwhat are the values of p and r?\n(b) A line with slope 3 and another line with slope −1 intersect at P(3, 6). What is\nthe distance between the x-intercepts of the two lines?\n(c) For some value of t, the line with equation y = tx + t is perpendicular to the line\nwith equation y = 2x + 7. Determine the point of intersection of these two lines.\n3.\n(a) The positive divisors of 6 are 1, 2, 3, and 6. What is the sum of the positive",
+        "contest": "Euclid",
+        "year": 2023,
+        "problem_number": 2,
+        "part": null,
+        "topics": [
+          "algebra",
+          "number_theory",
+          "geometry",
+          "calculus",
+          "sequences"
+        ],
+        "grades": [
+          12
+        ],
+        "has_solution": true,
+        "has_diagram": true,
+        "source_file": "2023EuclidContest.pdf",
+        "pdf_path": "C:\\Users\\chess\\Documents\\lumi\\contests\\Euclid\\2023EuclidContest.pdf",
+        "solution_pdf_path": "C:\\Users\\chess\\Documents\\lumi\\contests\\Euclid\\2023EuclidSolution.pdf",
+        "page_number": 1,
+        "solution_page_number": 1,
+        "solution_text": "(a) S\nce Q(5, 3) s t e\ndpo t o\n( , p) a d R(r, 5), t e\n2\n5 a d\n2\n3\nThus, 1 + r = 10 which gives r = 9, and p + 5 = 6 which gives p = 1.\nTherefore, p = 1 and r = 9.\n(b) Solution 1\nThe point with coordinates P(3, 6) is 6 units above the x-axis.\nA line with slope 3 moves 2 units to the right as it moves 6 units up. Therefore, to move\nfrom P(3, 6) to the x-axis along a line with slope 3 results in a move of 6 units down and\n2 units left. Thus, its x-intercept is 3 −2 = 1.\nA line with slope −1 moves 6 units to the left as it moves 6 units up. Therefore, to move\nfrom P(3, 6) to the x-axis along a line with slope −1 results in a move of 6 units down\nand 6 units right. Thus, its x-intercept is 3 + 6 = 9.\nThe distance between these x-intercepts is 9 −1 = 8.\nSolution 2\nThe line with slope 3 that passes through P(3, 6) has equation y −6 = 3(x −3) or\ny = 3x −3.\nThe x-intercept of this line has y = 0 and so 0 = 3x −3 or 3x = 3, which gives x = 1.\nThe line with slope −1 that passes through P(3, 6) has equation y −6 = (−1)(x −3) or\ny = −x + 9.\nThe x-intercept of this line has y = 0 and so 0 = −x + 9 or x = 9.\nThe distance between these x-intercepts is 9 −1 = 8.\n\n2023 Euclid Contest Solutions\nPage 3\n(c) The line with equation y = 2x + 7 has slope 2.\nThe line with equation y = tx + t has slope t.\nSince these lines are perpendicular, the product of their slopes is −1 and so 2t = −1 which\ngives t = −1\n2.\nWe now need to ﬁnd the point of intersection of the lines with equations y = 2x + 7 and\ny = −1\n2x −1\n2.\nEquating expressions for y, we obtain 2x+7 = −1\n2x−1\n2 or 5\n2x = −15\n2 , which gives x = −3.\nTherefore, y = 2x + 7 = 2(−3) + 7 = 1, and so the point of intersection of these lines is\n(−3, 1).\n3.\n(a) Since 64 = 26, its positive divisors are 1, 2, 4, 8, 16, 32, and 64."
+      }
+    ],
+    "messages": [
+      {
+        "role": "user",
+        "content": "show me 2023 fermat q1"
+      },
+      {
+        "role": "assistant",
+        "content": "**Fermat 2023 — Problem 1**\n_No solution available for this problem._"
+      },
+      {
+        "role": "user",
+        "content": "show me 2023 galois q1"
+      },
+      {
+        "role": "assistant",
+        "content": "**Galois 2023 — Problem 1**\nTopics: algebra, geometry, combinatorics, sequences\n_No solution available for this problem._"
+      },
+      {
+        "role": "user",
+        "content": "show me 2025 euclid q1"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2025 — Problem 1**\nTopics: algebra, number_theory, geometry, sequences\n_Solution available — click Show solution below the image._"
+      },
+      {
+        "role": "user",
+        "content": "can you explain 2025 euclid q1 to me"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2025 — Problem 1**\n\nKey insight: The problem consists of multiple parts, each requiring a different approach, including algebraic manipulations, solving linear equations, and finding the intersection point of two lines.\n\n1. The first part (a) asks to find the value of x given an equation, but the equation provided seems incomplete or distorted, so we will focus on the provided solutions for parts (b) and (c), and the separate question about the integer k.\n\n2. For part (b), the first solution starts by using the given equation 2x = 9 to find 6x, which is 3 * 2x = 3 * 9 = 27.\n\n3. The solution then calculates 26x - 23 by recognizing that 26x is the same as 2 * 13x, but since we found 6x, we can calculate 24 (which is 2^4) to find a pattern, resulting in 26x - 23 = 24 = 16, but there seems to be a step missing or an error in the explanation given.\n\n4. The second solution for part (b) directly calculates x from 2x = 9, giving x = 9 / 2.\n\n5. Then, it calculates 6x - 23, but there seems to be confusion with the power of 2 in 26x, as the solution correctly calculates 6x but then mistakenly equates it directly to solve for 26x - 23 without using the correct power, resulting in an incorrect step but accidentally reaching a correct conclusion of 16 through a miscalculation in explanation.\n\n6. For part (c), the solution correctly equates the two expressions for y from the given equations of lines, resulting in 3x + 7 = 7x + 3.\n\n7. Solving this equation for x gives 4x = 4, which simplifies to x = 1.\n\n8. Substituting x = 1 back into one of the line equations, y = 3x + 7, yields y = 3*1 + 7 = 10, so the point of intersection is (1, 10).\n\n9. Moving on to the separate question about the integer k, where 3 < √(k^2 + 4) < 4, squaring all parts of the inequality yields 9 < k^2 + 4 < 16.\n\n10. Subtracting 4 from each part gives 5 < k^2 < 12.\n\n11. Considering the squares of integers within this range, k^2 must be 9, which means k = 3, since k is a positive integer and 3^2 = 9 fits within the given bounds.\n\nAnswer: The specific answers to each part are not directly concluded in the explanation due to the incomplete or distorted initial equation and the confusion within the provided solutions, but key steps and correct answers where the solution is clear are provided, such as the intersection point (1, 10) and k = 3."
+      },
+      {
+        "role": "user",
+        "content": "show me 2025 euclid q3"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2025 — Problem 3**\nTopics: algebra, sequences, logic\n_Solution available — click Show solution below the image._"
+      },
+      {
+        "role": "user",
+        "content": "can you show me the solution to 2025 euclid q3"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2025 — Problem 3**\nTopics: algebra, sequences, logic\n_Solution available — click Show solution below the image._"
+      },
+      {
+        "role": "user",
+        "content": "can you explain the solution to 2025 euclid q3"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2025 — Problem 3**\n\nKey insight: The problem has three distinct parts, each requiring a different approach: solving a system of linear equations, finding the equation of a parabola given certain conditions, and determining the values of variables in a system of equations involving fractions.\n\n1. For part (a), the first step is to use the given equations p + q = 5 and q + r = 9 to find a relationship between p, q, and r by adding these two equations, resulting in p + 2q + r = 14.\n\n2. Next, we can use the equation p + q + r = 18 and subtract the equation p + 2q + r = 14 from it to eliminate p and r, giving us -q = -4, which simplifies to q = -4.\n\n3. Alternatively, we can solve for r by using p + q = 5 and p + q + r = 18, which gives r = 13, and then substitute r into q + r = 9 to find q = -4.\n\n4. Moving on to part (b), we start by finding the x-intercept of the line 6x + y = 24 by setting y = 0, which yields x = 4.\n\n5. To find the y-intercept, we set x = 0, resulting in y = 24, giving us the points P(4, 0) and Q(0, 24).\n\n6. Since the parabola has only one x-intercept at x = 4, its equation can be written in the form y = a(x - 4)^2, where a is a constant to be determined.\n\n7. Using the point (0, 24) where the parabola intersects the y-axis, we substitute x = 0 and y = 24 into the equation y = a(x - 4)^2, giving 24 = a(0 - 4)^2, which simplifies to 24 = 16a.\n\n8. Solving for a gives a = 24 / 16 = 3/2, so the equation of the parabola is y = (3/2)(x - 4)^2.\n\n9. For part (c), we observe that since 1/2w = 1/3y = 1/4z and their sum equals 1/24, each fraction must equal 1/3 of 1/24.\n\n10. This implies 1/2w = 1/3y = 1/4z = 1/72, leading to 2w = 3y = 4z = 72.\n\n11. Therefore, w = 36, y = 24, and z = 18.\n\n12. Finally, to find w + y + z, we add these values together: w + y + z = 36 + 24 + 18 = 78.\n\nAnswer: The solution to the three parts of the problem are: q = -4, the equation of the parabola is y = (3/2)(x - 4)^2, and w + y + z = 78."
+      },
+      {
+        "role": "user",
+        "content": "show me 2025 euclid q3"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2025 — Problem 3**\nTopics: algebra, sequences, logic\n_Solution available — click Show solution below the image._"
+      },
+      {
+        "role": "user",
+        "content": "can you explain 2025 euclid q3"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2025 — Problem 3**\n\nKey insight: This problem has three distinct parts, each requiring a different approach: solving a system of linear equations, finding the equation of a parabola given certain conditions, and determining the values of variables in a system of equations involving fractions.\n\n1. The first part of the problem provides two equations: p + q = 5 and q + r = 9, which can be combined to find a relationship between p, q, and r by adding these two equations, resulting in p + 2q + r = 14.\n\n2. The equation p + q + r = 18 can be used in conjunction with p + 2q + r = 14 to eliminate p and r, giving us -q = -4, which simplifies to q = -4.\n\n3. Alternatively, we can solve for r by using p + q = 5 and p + q + r = 18, which gives r = 13, and then substitute r into q + r = 9 to find q = -4.\n\n4. Moving on to the second part of the problem, we start by finding the x-intercept of the line 6x + y = 24 by setting y = 0, which yields x = 4.\n\n5. To find the y-intercept, we set x = 0, resulting in y = 24, giving us the points P(4, 0) and Q(0, 24).\n\n6. Since the parabola has only one x-intercept at x = 4, its equation can be written in the form y = a(x - 4)^2, where a is a constant to be determined.\n\n7. Using the point (0, 24) where the parabola intersects the y-axis, we substitute x = 0 and y = 24 into the equation y = a(x - 4)^2, giving 24 = a(0 - 4)^2, which simplifies to 24 = 16a.\n\n8. Solving for a gives a = 24 / 16 = 3/2, so the equation of the parabola is y = (3/2)(x - 4)^2.\n\n9. For the third part of the problem, we observe that since 1/2w = 1/3y = 1/4z and their sum equals 1/24, each fraction must equal 1/3 of 1/24.\n\n10. This implies 1/2w = 1/3y = 1/4z = 1/72, leading to 2w = 3y = 4z = 72.\n\n11. Therefore, w = 36, y = 24, and z = 18.\n\n12. Finally, to find w + y + z, we add these values together: w + y + z = 36 + 24 + 18 = 78.\n\nAnswer: The solution to the three parts of the problem are: q = -4, the equation of the parabola is y = (3/2)(x - 4)^2, and w + y + z = 78."
+      },
+      {
+        "role": "user",
+        "content": "show me 2025 euclid q1"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2025 — Problem 1**\nTopics: algebra, number_theory, geometry, sequences\n_Solution available — click Show solution below the image._"
+      },
+      {
+        "role": "user",
+        "content": "explain 2025 euclid q1"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2025 — Problem 1**\n\nKey insight: This problem consists of three distinct parts: solving for the value of x in an expression, determining the value of an expression given a specific equation, and finding the point of intersection between two lines.\n\n1. The first part of the problem involves evaluating the expression (x^8)/(x^8) + (x^8)/(x^8), which simplifies to 1 + 1, resulting in 2, and the value of this expression does not depend on x as long as x is not equal to 0.\n\n2. Moving on to the second part, if 2x = 9, we can solve for x by dividing both sides by 2, giving x = 9/2.\n\n3. To find the value of 26x - 23, we can substitute the value of x into the expression: 26 * (9/2) - 23, which simplifies to 117 - 23, resulting in 94, but this is not the final answer as provided in the solution.\n\n4. Alternatively, using the provided solutions, if 2x = 9, then 6x = 3 * 2x = 3 * 9 = 27, and this implies that 26x - 23 = 2^7 - 23 = 128 - 23 = 105 is not the answer, instead we should consider the solutions given.\n\n5. Solution 1 suggests that 26x - 23 = 2^7 - 23 = 128 - 23 is not the correct path, but instead we are given that 26x - 23 = 16.\n\n6. Solution 2 also provides an explanation for the value of 26x - 23: if 2x = 9, then x = 9/2, and 6x - 23 = 6 * (9/2) - 23 = 27 - 23 = 4, and thus 26x - 23 = 16, as provided by the solution.\n\n7. For the third part of the problem, to determine the point of intersection of the lines y = 3x + 7 and y = 7x + 3, we equate the expressions for y: 3x + 7 = 7x + 3.\n\n8. Solving the equation 3x + 7 = 7x + 3 for x, we get 4x = 4, which gives x = 1.\n\n9. Substituting x = 1 into the equation y = 3x + 7, we find y = 3(1) + 7 = 3 + 7 = 10.\n\n10. Therefore, the point of intersection between the lines y = 3x + 7 and y = 7x + 3 is (1, 10).\n\nAnswer: The solution to the three parts of the problem are: the expression (x^8)/(x^8) + (x^8)/(x^8) equals 2 for x not equal to 0, 26x - 23 equals 16 when 2x = 9, and the point of intersection of the lines y = 3x + 7 and y = 7x + 3 is (1, 10)."
+      },
+      {
+        "role": "user",
+        "content": "show me some questions from the latest gauss contest"
+      },
+      {
+        "role": "assistant",
+        "content": "No problems found for Gauss."
+      },
+      {
+        "role": "user",
+        "content": "show me some questions from the latest euclid contest"
+      },
+      {
+        "role": "assistant",
+        "content": "Here are the matching problem(s):\n\n**1.** **Euclid 2019 — Problem 5**\nTopics: algebra, number_theory, sequences\n_Solution available — click Show solution below the image._\n\n**2.** **Euclid 2025 — Problem 1**\nTopics: algebra, number_theory, geometry, sequences\n_Solution available — click Show solution below the image._\n\n**3.** **Euclid 2019 — Problem 4**\nTopics: number_theory, geometry, sequences\n_Solution available — click Show solution below the image._"
+      },
+      {
+        "role": "user",
+        "content": "show me 2023 euclid q22"
+      },
+      {
+        "role": "assistant",
+        "content": "Could not find **Euclid 2023 Problem 22** in the database. Make sure the PDFs have been ingested."
+      },
+      {
+        "role": "user",
+        "content": "show me 2023 euclid q2"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2023 — Problem 2**\nTopics: algebra, number_theory, geometry, calculus, sequences\n_Solution available — click Show solution below the image._"
+      },
+      {
+        "role": "user",
+        "content": "can you explain euclid 2023 q2 to me"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2023 — Problem 2**\n\nKey insight: The problem consists of three separate parts: (a) finding the values of p and r, (b) determining the distance between the x-intercepts of two lines, and (c) finding the point of intersection of two perpendicular lines.\n\n1. For part (a), we start by using the given information that Q(5, 3) is a point on the line that passes through (p, 0) and R(r, 5), which allows us to form a right triangle with legs of length 5 and 3, and hypotenuse of length 5 + r.\n\n2. Using the Pythagorean theorem, we can find the relationship between p, r, and the coordinates of Q, which gives us two equations: 1 + r = 10 and p + 5 = 6.\n\n3. Solving these equations simultaneously gives us the values of p and r: p = 1 and r = 9.\n\n4. Moving on to part (b), we are given a point P(3, 6) that lies on two lines, one with slope 3 and the other with slope -1.\n\n5. To find the x-intercepts of these lines, we can use the fact that a line with slope 3 moves 2 units to the right as it moves 6 units up, and a line with slope -1 moves 6 units to the left as it moves 6 units up.\n\n6. Using this information, we can find the x-intercepts of the two lines: the line with slope 3 has an x-intercept at x = 1, and the line with slope -1 has an x-intercept at x = 9.\n\n7. Alternatively, we can find the equations of the lines and then find their x-intercepts by setting y = 0.\n\n8. The distance between the x-intercepts is then simply the difference between the two x-coordinates: 9 - 1 = 8.\n\n9. For part (c), we are given two lines with equations y = 2x + 7 and y = tx + t, and we are told that they are perpendicular.\n\n10. Since the lines are perpendicular, the product of their slopes is -1, which allows us to find the value of t: 2t = -1, so t = -1/2.\n\n11. We can then find the point of intersection of the two lines by equating the expressions for y and solving for x.\n\n12. Once we have the value of x, we can substitute it back into one of the equations to find the corresponding value of y.\n\n13. The point of intersection of the two lines is then (x, y) = (-3, 1).\n\nAnswer: The values of p and r are 1 and 9, the distance between the x-intercepts is 8, and the point of intersection is (-3, 1)."
+      },
+      {
+        "role": "user",
+        "content": "show me euclid 2023 q2"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2023 — Problem 2**\nTopics: algebra, number_theory, geometry, calculus, sequences\n_Solution available — click Show solution below the image._"
+      },
+      {
+        "role": "user",
+        "content": "show me euclid 2023 q2"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2023 — Problem 2**\nTopics: algebra, number_theory, geometry, calculus, sequences\n_Solution available — click Show solution below the image._"
+      },
+      {
+        "role": "user",
+        "content": "show me euclid 2023 q3"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2023 — Problem 3**\nTopics: number_theory, sequences\n_Solution available — click Show solution below the image._"
+      },
+      {
+        "role": "user",
+        "content": "show me euclid 2023 q2"
+      },
+      {
+        "role": "assistant",
+        "content": "**Euclid 2023 — Problem 2**\nTopics: algebra, number_theory, geometry, calculus, sequences\n_Solution available — click Show solution below the image._"
+      }
+    ],
+    "active_problem": {
+      "document": "Contest: Euclid 2023\nProblem 2\nTopics: algebra, number_theory, geometry, calculus, sequences\n\n(a)\nQ(5, 3) s t e\ndpo\nt o t e\ne seg\ne t w t\ne dpo\nts\n( , p) a d R(r, 5),\nwhat are the values of p and r?\n(b) A line with slope 3 and another line with slope −1 intersect at P(3, 6). What is\nthe distance between the x-intercepts of the two lines?\n(c) For some value of t, the line with equation y = tx + t is perpendicular to the line\nwith equation y = 2x + 7. Determine the point of intersection of these two lines.\n3.\n(a) The positive divisors of 6 are 1, 2, 3, and 6. What is the sum of the positive",
+      "contest": "Euclid",
+      "year": 2023,
+      "problem_number": 2,
+      "part": null,
+      "topics": [
+        "algebra",
+        "number_theory",
+        "geometry",
+        "calculus",
+        "sequences"
+      ],
+      "grades": [
+        12
+      ],
+      "has_solution": true,
+      "has_diagram": true,
+      "source_file": "2023EuclidContest.pdf",
+      "pdf_path": "C:\\Users\\chess\\Documents\\lumi\\contests\\Euclid\\2023EuclidContest.pdf",
+      "solution_pdf_path": "C:\\Users\\chess\\Documents\\lumi\\contests\\Euclid\\2023EuclidSolution.pdf",
+      "page_number": 1,
+      "solution_page_number": 1,
+      "solution_text": "(a) S\nce Q(5, 3) s t e\ndpo t o\n( , p) a d R(r, 5), t e\n2\n5 a d\n2\n3\nThus, 1 + r = 10 which gives r = 9, and p + 5 = 6 which gives p = 1.\nTherefore, p = 1 and r = 9.\n(b) Solution 1\nThe point with coordinates P(3, 6) is 6 units above the x-axis.\nA line with slope 3 moves 2 units to the right as it moves 6 units up. Therefore, to move\nfrom P(3, 6) to the x-axis along a line with slope 3 results in a move of 6 units down and\n2 units left. Thus, its x-intercept is 3 −2 = 1.\nA line with slope −1 moves 6 units to the left as it moves 6 units up. Therefore, to move\nfrom P(3, 6) to the x-axis along a line with slope −1 results in a move of 6 units down\nand 6 units right. Thus, its x-intercept is 3 + 6 = 9.\nThe distance between these x-intercepts is 9 −1 = 8.\nSolution 2\nThe line with slope 3 that passes through P(3, 6) has equation y −6 = 3(x −3) or\ny = 3x −3.\nThe x-intercept of this line has y = 0 and so 0 = 3x −3 or 3x = 3, which gives x = 1.\nThe line with slope −1 that passes through P(3, 6) has equation y −6 = (−1)(x −3) or\ny = −x + 9.\nThe x-intercept of this line has y = 0 and so 0 = −x + 9 or x = 9.\nThe distance between these x-intercepts is 9 −1 = 8.\n\n2023 Euclid Contest Solutions\nPage 3\n(c) The line with equation y = 2x + 7 has slope 2.\nThe line with equation y = tx + t has slope t.\nSince these lines are perpendicular, the product of their slopes is −1 and so 2t = −1 which\ngives t = −1\n2.\nWe now need to ﬁnd the point of intersection of the lines with equations y = 2x + 7 and\ny = −1\n2x −1\n2.\nEquating expressions for y, we obtain 2x+7 = −1\n2x−1\n2 or 5\n2x = −15\n2 , which gives x = −3.\nTherefore, y = 2x + 7 = 2(−3) + 7 = 1, and so the point of intersection of these lines is\n(−3, 1).\n3.\n(a) Since 64 = 26, its positive divisors are 1, 2, 4, 8, 16, 32, and 64."
+    }
+  },
+  "session_52zqugf": {
+    "state": "idle",
+    "subject": null,
+    "grade": null,
+    "name": null,
+    "active_agent": "general",
+    "pending_match_step": null,
+    "query_text": null,
+    "pending_booking_choice": null,
+    "matches": [],
+    "messages": [
+      {
+        "role": "user",
+        "content": "show me cimc 2023 q5"
+      },
+      {
+        "role": "user",
+        "content": "show me euclid q3 2024"
+      },
+      {
+        "role": "assistant",
+        "content": "The contest problem database hasn't been indexed yet.\n\nRun the ingestion script first:\n  python -m scripts.ingest_contests --pdf-root /path/to/your/contests\n\nOnce indexed, I can answer questions, retrieve problems, and explain solutions."
+      },
+      {
+        "role": "assistant",
+        "content": "The contest problem database hasn't been indexed yet.\n\nRun the ingestion script first:\n  python -m scripts.ingest_contests --pdf-root /path/to/your/contests\n\nOnce indexed, I can answer questions, retrieve problems, and explain solutions."
+      }
+    ]
   }
 }
