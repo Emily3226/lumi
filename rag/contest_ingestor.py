@@ -272,6 +272,16 @@ def _collect_label_candidates(
 
                     candidates.append((n, pi, y, x, fs))
 
+    # ── x-column pinning ─────────────────────────────────────────────────────
+    # All real problem labels share a single left-margin column.  Any stray
+    # match (e.g. a numbered list item indented further right) will have a
+    # noticeably different x.  Compute the median x and reject outliers.
+    if len(candidates) >= 3:
+        import statistics as _stats
+        median_x = _stats.median(c[3] for c in candidates)
+        _COL_TOL = 18  # pts — allows for minor font/indent variation
+        candidates = [c for c in candidates if abs(c[3] - median_x) <= _COL_TOL]
+
     return sorted(candidates, key=lambda c: (c[1], c[2]))
 
 

@@ -17,24 +17,91 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
-from openai import OpenAI
+try:
+    from openai import OpenAI
+except Exception:
+    OpenAI = None
 
+try:
+    import certifi_win32  # noqa: F401
+except Exception:
+    certifi_win32 = None
+
+from api.problem_set_service import build_problem_set_from_text, is_problem_set_request
 from rag.contest_retriever import (
     collection_count,
     get_by_contest_year,
     list_available_contests,
     query as chroma_query,
 )
-from rag.contest_ingestor import TOPIC_KEYWORDS, CONTEST_GRADES
+from rag.contest_ingestor import (
+    TOPIC_KEYWORDS,
+    CONTEST_GRADES,
+    discover_contest_files,
+    pair_contest_files,
+)
 
 # ── Groq client ───────────────────────────────────────────────────────────────
 
-_client = OpenAI(
-    api_key=os.environ.get("GROQ_API_KEY", ""),
-    base_url="https://api.groq.com/openai/v1",
-)
+def _load_dotenv_file() -> None:
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.exists():
+        return
+
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].strip()
+
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+
+        if os.environ.get(key, "").strip():
+            continue
+
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+
+        os.environ[key] = value
+
+
+_load_dotenv_file()
+
+_groq_init_error = ""
+
+try:
+    groq_api_key = os.environ.get("GROQ_API_KEY", "").strip()
+    if OpenAI is None:
+        _client = None
+        _groq_init_error = "openai package is not installed"
+    elif not groq_api_key:
+        _client = None
+        _groq_init_error = "GROQ_API_KEY is not set"
+    else:
+        _client = OpenAI(
+            api_key=groq_api_key,
+            base_url="https://api.groq.com/openai/v1",
+        )
+except Exception as e:
+    _client = None
+    _groq_init_error = str(e)
 
 _MODEL = "llama-3.3-70b-versatile"
 
@@ -73,6 +140,9 @@ For general conversation:
 
 def _grok(messages: list[dict], max_tokens: int = 1200) -> str:
     """Call the Groq API and return the assistant text."""
+    if _client is None:
+        reason = _groq_init_error or "Groq client is not configured"
+        return f"_(AI explanation unavailable: {reason}.)_"
     try:
         response = _client.chat.completions.create(
             model=_MODEL,
@@ -82,6 +152,141 @@ def _grok(messages: list[dict], max_tokens: int = 1200) -> str:
         return response.choices[0].message.content.strip()
     except Exception as e:
         return f"_(AI explanation unavailable: {e})_"
+
+
+def _local_solution_explanation(problem_text: str, solution_text: str) -> str:
+    """Produce a grounded fallback explanation from noisy official solution text."""
+    def clean(line: str) -> str:
+        raw = line.strip()
+        for prefix in ("PROBLEM:", "OFFICIAL SOLUTION:", "SOLUTION:"):
+            if raw.upper().startswith(prefix):
+                return raw[len(prefix):].strip()
+        return raw
+
+    raw_lines = [clean(line) for line in solution_text.splitlines() if clean(line)]
+
+    def is_header_or_footer(line: str) -> bool:
+        if re.match(r"^Page\s+\d+$", line, re.I):
+            return True
+        if re.match(r"^\d{4}\s+.*Contest\s+Solutions?$", line, re.I):
+            return True
+        return False
+
+    def is_noisy_fragment(line: str) -> bool:
+        # Drop heavily fragmented lines like "S ce ... s t e" from broken font maps.
+        low = line.lower()
+        if any(k in low for k in ("therefore", "thus", "since", "solution", "equation")):
+            return False
+        if "=" in line:
+            return False
+        tokens = re.findall(r"[A-Za-z]+", line)
+        if not tokens:
+            # Pure numeric or symbol-only fragments rarely carry useful explanation text.
+            return bool(re.match(r"^[\d\s\-+/=().,]+$", line))
+        short = sum(1 for t in tokens if len(t) == 1)
+        short_ratio = short / max(1, len(tokens))
+        if len(tokens) >= 5 and short_ratio >= 0.6 and max(len(t) for t in tokens) <= 3:
+            return True
+        if len(tokens) >= 6 and (sum(len(t) for t in tokens) / len(tokens)) < 2.0 and max(len(t) for t in tokens) <= 3:
+            return True
+        if len(line) < 8 and not re.search(r"[=<>+\-×÷]", line):
+            return True
+        if len(line) < 12 and short >= 2 and not re.search(r"[=<>+\-×÷]", line):
+            return True
+        return False
+
+    cleaned_lines: list[str] = []
+    i = 0
+    while i < len(raw_lines):
+        line = raw_lines[i]
+        nxt = raw_lines[i + 1] if i + 1 < len(raw_lines) else ""
+
+        # Stop before the next problem starts, e.g. "3." followed by "(a) ..."
+        if re.match(r"^\d{1,2}\.$", line) and re.match(r"^\([a-z]\)", nxt, re.I):
+            break
+
+        if re.match(r"^\([a-z]\)", line, re.I):
+            cleaned_lines.append(line)
+            i += 1
+            continue
+
+        if not is_header_or_footer(line) and not is_noisy_fragment(line):
+            cleaned_lines.append(line)
+        i += 1
+
+    if cleaned_lines:
+        # Split into (a), (b), (c) parts when available.
+        parts: dict[str, list[str]] = {}
+        current = ""
+        for line in cleaned_lines:
+            m = re.match(r"^\(([a-z])\)\s*(.*)$", line, re.I)
+            if m:
+                current = m.group(1).lower()
+                rest = m.group(2).strip()
+                parts.setdefault(current, [])
+                if rest:
+                    parts[current].append(rest)
+                continue
+            if current:
+                parts.setdefault(current, []).append(line)
+
+        def summarize_part(label: str, lines: list[str]) -> str:
+            # Keep useful full lines only.
+            useful = [ln for ln in lines if len(ln) >= 10]
+            eq_lines = [ln for ln in useful if "=" in ln]
+            conclusion = ""
+            for ln in reversed(useful):
+                low = ln.lower()
+                if any(k in low for k in ("therefore", "thus", "gives", "so ")):
+                    conclusion = ln
+                    break
+            if not conclusion and useful:
+                conclusion = useful[-1]
+
+            sentences: list[str] = []
+            sentences.append(f"Part ({label}): The official solution sets up the key relationships from the problem conditions and then solves them step by step.")
+            if eq_lines:
+                first_eq = eq_lines[0]
+                sentences.append(f"A central equation used is: {first_eq}")
+            if conclusion:
+                sentences.append(f"The conclusion is: {conclusion}")
+            if len(useful) >= 2:
+                sentences.append(f"In words: {useful[0]} {useful[1]}")
+            return "\n".join(sentences)
+
+        if parts:
+            ordered = [k for k in ("a", "b", "c", "d", "e") if k in parts]
+            blocks = [summarize_part(k, parts[k]) for k in ordered]
+            return "Official solution summary:\n\n" + "\n\n".join(blocks)
+
+        # No explicit part markers: still return coherent sentences.
+        useful = [ln for ln in cleaned_lines if len(ln) >= 10]
+        if useful:
+            top = useful[:5]
+            return (
+                "Official solution summary:\n\n"
+                "The official solution proceeds by translating the conditions into equations and solving them carefully.\n"
+                f"Key step: {top[0]}\n"
+                + (f"Supporting step: {top[1]}\n" if len(top) > 1 else "")
+                + (f"Conclusion: {top[-1]}" if top else "")
+            )
+
+    problem_lines = [line.strip() for line in problem_text.splitlines() if line.strip()]
+    if problem_lines:
+        return (
+            "I could not access the official solution text right now, so here is the exact problem statement:\n\n"
+            + "\n".join(problem_lines)
+        )
+
+    return "I could not access the solution text right now. Please try again."
+
+
+def _grok_or_local(messages: list[dict], problem_text: str, solution_text: str, max_tokens: int = 1200) -> str:
+    """Use Groq when available; otherwise fall back to a grounded local explanation."""
+    reply = _grok(messages, max_tokens=max_tokens)
+    if reply.startswith("_(AI explanation unavailable:"):
+        return _local_solution_explanation(problem_text, solution_text)
+    return reply
 
 
 def _build_history(session: dict, n: int = 6) -> list[dict]:
@@ -107,6 +312,60 @@ def _get_full_problem(contest: str, year: int, prob_num: int) -> dict | None:
     return None
 
 
+@lru_cache(maxsize=1)
+def _local_contest_index() -> dict[tuple[str, int], dict[str, str]]:
+    """Build a lightweight index of local contest and solution PDFs."""
+    pdf_root = Path(__file__).resolve().parent.parent / "contests"
+    files = discover_contest_files(pdf_root)
+    index: dict[tuple[str, int], dict[str, str]] = {}
+
+    for contest_name, contest_file, solution_file in pair_contest_files(files):
+        ref = contest_file or solution_file
+        if ref is None:
+            continue
+        index[(contest_name, ref.year)] = {
+            "contest": contest_name,
+            "year": str(ref.year),
+            "pdf_path": str(contest_file.path.resolve()) if contest_file else "",
+            "solution_pdf_path": str(solution_file.path.resolve()) if solution_file else "",
+        }
+
+    return index
+
+
+def _resolve_local_problem(contest: str, year: int, prob_num: int) -> dict | None:
+    """Resolve an exact contest/year/problem request from local PDFs."""
+    index = _local_contest_index()
+    keys = [(contest, year)]
+    if contest == "Gauss":
+        keys.extend([("Gauss7", year), ("Gauss8", year)])
+
+    for key in keys:
+        meta = index.get(key)
+        if not meta:
+            continue
+        pdf_path = meta.get("pdf_path", "")
+        if not pdf_path:
+            continue
+        return {
+            "contest": meta["contest"],
+            "year": int(meta["year"]),
+            "problem_number": prob_num,
+            "pdf_path": pdf_path,
+            "solution_pdf_path": meta.get("solution_pdf_path", ""),
+            "has_solution": bool(meta.get("solution_pdf_path")),
+            "page_number": prob_num,
+            "solution_page_number": prob_num,
+            "topics": [],
+            "grades": [],
+            "source_file": "",
+            "part": None,
+            "document": "",
+        }
+
+    return None
+
+
 # ── Result type ───────────────────────────────────────────────────────────────
 
 @dataclass
@@ -115,6 +374,8 @@ class ContestResult:
     problems: list[dict] | None = None
     intent: str = "general"
     active_agent: str | None = None
+    problem_set_url: str | None = None
+    problem_set_label: str | None = None
 
 
 # ── Regex helpers ─────────────────────────────────────────────────────────────
@@ -213,6 +474,9 @@ def _extract_grade(text: str) -> int | None:
 
 def detect_intent(text: str, session: dict) -> str:
     n = _norm(text)
+
+    if is_problem_set_request(n):
+        return "problem_set"
 
     if any(w in n for w in _SWITCH_WORDS):
         return "switch_general"
@@ -331,6 +595,14 @@ def handle_specific_problem(text: str, session: dict) -> ContestResult:
                 problems=[result],
                 intent="specific_problem",
             )
+        local = _resolve_local_problem(contest, year, prob_num)
+        if local:
+            session["active_problem"] = local
+            return ContestResult(
+                reply=_fmt_problem(local),
+                problems=[local],
+                intent="specific_problem",
+            )
         return ContestResult(
             reply=f"Could not find **{contest} {year} Problem {prob_num}** in the database. "
                   f"Make sure the PDFs have been ingested.",
@@ -437,7 +709,12 @@ def handle_explain_solution(text: str, session: dict) -> ContestResult:
         )
 
     history = _build_history(session)
-    explanation = _grok(history + [{"role": "user", "content": prompt}], max_tokens=1500)
+    explanation = _grok_or_local(
+        history + [{"role": "user", "content": prompt}],
+        problem_text=problem_text,
+        solution_text=solution_text,
+        max_tokens=1500,
+    )
     return ContestResult(
         reply=header + explanation,
         problems=[result],
@@ -469,7 +746,7 @@ def handle_followup(text: str, session: dict) -> ContestResult:
     messages += _build_history(session)
     messages.append({"role": "user", "content": text})
 
-    reply = _grok(messages, max_tokens=1200)
+    reply = _grok_or_local(messages, problem_text=prob_text, solution_text=sol_text, max_tokens=1200)
     return ContestResult(reply=reply, intent="followup", active_agent="contest")
 
 
@@ -597,6 +874,28 @@ def handle_search(text: str, session: dict) -> ContestResult:
     return ContestResult(reply=reply, intent="search")
 
 
+def handle_problem_set(text: str, session: dict) -> ContestResult:
+    result = build_problem_set_from_text(text)
+    if not result.ok:
+        return ContestResult(
+            reply=result.reply,
+            intent="problem_set",
+            active_agent="contest",
+        )
+
+    if result.problems:
+        session["active_problem"] = result.problems[0]
+
+    return ContestResult(
+        reply=result.reply,
+        problems=result.problems,
+        intent="problem_set",
+        active_agent="contest",
+        problem_set_url=result.pdf_url,
+        problem_set_label=result.label,
+    )
+
+
 # ── Main agent ────────────────────────────────────────────────────────────────
 
 class ContestAgent:
@@ -621,6 +920,8 @@ class ContestAgent:
             return handle_concept(message, session)
 
         if collection_count() == 0:
+            if intent in {"problem_set", "list_contests", "practice", "search", "followup"}:
+                return _unavailable_reply()
             # Still answer general questions even without DB
             history = _build_history(session)
             reply = _grok(history + [{"role": "user", "content": message}], max_tokens=800)
@@ -636,6 +937,8 @@ class ContestAgent:
             return handle_followup(message, session)
         elif intent == "practice":
             return handle_practice(message, session)
+        elif intent == "problem_set":
+            return handle_problem_set(message, session)
         else:
             return handle_search(message, session)
 

@@ -1,48 +1,92 @@
 """
-Drop in project root and run:
-  python diagnose_solution_pdf.py "C:\path\to\2023PascalSolution.pdf"
-
-Shows the first 40 spans in the left 25% of each content page so you can
-see exactly what label format the solution PDFs use.
+Run from the project root to see exactly how your PDF files are being parsed.
+Usage: python diagnose_pdfs.py --pdf-root /path/to/your/contests
 """
-import sys
+import argparse
 import re
+import sys
 from pathlib import Path
-import fitz
 
-if len(sys.argv) < 2:
-    print("Usage: python diagnose_solution_pdf.py <path_to_solution.pdf>")
-    sys.exit(1)
+FOLDER_CONTESTS = {
+    "CSIMC": ["CIMC", "CSMC"],
+    "Euclid": ["Euclid"],
+    "FGH": ["Fryer", "Galois", "Hypatia"],
+    "Gauss": ["Gauss7", "Gauss8", "Gauss"],
+    "PCF": ["Pascal", "Cayley", "Fermat"],
+}
 
-path = Path(sys.argv[1])
-doc = fitz.open(str(path))
-n = len(doc)
-print(f"\nPDF: {path.name}  ({n} pages)\n")
+def _parse_filename(filename: str):
+    stem = Path(filename).stem
+    is_solution = bool(re.search(r"solution", stem, re.I))
+    m = re.match(r"^(\d{4})", stem)
+    if not m:
+        return None
+    year = int(m.group(1))
+    remainder = re.sub(r"(?i)(contest|solution)\s*$", "", stem[4:]).strip()
 
-for pi in range(1, min(n - 1, 6)):   # pages 1-5 (skip cover)
-    page = doc[pi]
-    pw = page.rect.width
-    print(f"--- Page {pi} (width={pw:.0f}pt) ---")
-    count = 0
-    for block in page.get_text("dict")["blocks"]:
-        if block.get("type") != 0:
-            continue
-        for line in block.get("lines", []):
-            for span in line.get("spans", []):
-                t = span["text"].strip()
-                x = span["origin"][0]
-                y = span["origin"][1]
-                size = span.get("size", 0)
-                if x < pw * 0.25 and t:   # left 25% only
-                    marker = " <<<<" if re.match(r"^\d{1,2}\.?$", t) else ""
-                    print(f"  x={x:6.1f}  y={y:6.1f}  size={size:4.1f}  {repr(t)}{marker}")
-                    count += 1
-                    if count >= 40:
-                        break
-            if count >= 40:
-                break
-        if count >= 40:
+    all_names = sorted(
+        [n for names in FOLDER_CONTESTS.values() for n in names],
+        key=len, reverse=True,
+    )
+    contest = None
+    for name in all_names:
+        if re.match(re.escape(name), remainder, re.I):
+            contest = name
             break
-    print()
 
-doc.close()
+    if contest == "Gauss":
+        gm = re.search(r"Gauss\s*([78])", remainder, re.I)
+        if gm:
+            contest = f"Gauss{gm.group(1)}"
+
+    return (contest, year, is_solution) if contest else None
+
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--pdf-root", required=True)
+args = parser.parse_args()
+pdf_root = Path(args.pdf_root)
+
+print(f"\nScanning: {pdf_root}\n")
+print(f"{'FILE':<55} {'CONTEST':<10} {'YEAR':<6} {'SOLUTION?'}")
+print("-" * 85)
+
+unparsed = []
+pairs: dict = {}
+
+for folder in FOLDER_CONTESTS:
+    folder_path = pdf_root / folder
+    if not folder_path.exists():
+        print(f"  [MISSING FOLDER] {folder}")
+        continue
+    for pdf in sorted(folder_path.glob("*.pdf")):
+        result = _parse_filename(pdf.name)
+        if result:
+            contest, year, is_sol = result
+            key = f"{contest}_{year}"
+            pairs.setdefault(key, {"contest": [], "solution": []})
+            pairs[key]["solution" if is_sol else "contest"].append(pdf.name)
+            flag = "YES" if is_sol else "no"
+            print(f"  {pdf.name:<53} {contest:<10} {year:<6} {flag}")
+        else:
+            unparsed.append(str(pdf))
+            print(f"  {pdf.name:<53} *** COULD NOT PARSE ***")
+
+print("\n--- PAIRING SUMMARY ---")
+missing_solution = []
+missing_contest = []
+for key, group in sorted(pairs.items()):
+    has_c = bool(group["contest"])
+    has_s = bool(group["solution"])
+    status = "OK" if has_c and has_s else ("NO SOLUTION" if has_c else "NO CONTEST PDF")
+    if not has_s:
+        missing_solution.append(key)
+    if not has_c:
+        missing_contest.append(key)
+    marker = "" if (has_c and has_s) else "  <<<"
+    print(f"  {key:<30} contest={has_c}  solution={has_s}  {status}{marker}")
+
+print(f"\nTotal unparseable files: {len(unparsed)}")
+print(f"Contests missing solution PDF: {len(missing_solution)}")
+for k in missing_solution:
+    print(f"  - {k}")

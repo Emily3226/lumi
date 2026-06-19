@@ -44,6 +44,10 @@ _ALLOWED_EXT = {".pdf"}
 _PAD_TOP = 20        # pts above the problem label's y to include (captures the number itself)
 _LABEL_GAP = 6       # pts of breathing room kept below the last line before the next label
 _DOC_CACHE_SIZE = 8
+_CONTINUATION_HEADER_RE = re.compile(
+    r"^(?:Page \d+|\d{4}\s+.*Contest(?: Solutions?)?|\d{4}\s+.*Solutions?)$",
+    re.IGNORECASE,
+)
 
 # ── Document cache (LRU) ──────────────────────────────────────────────────────
 
@@ -117,17 +121,78 @@ def _last_content_y(pix: fitz.Pixmap, threshold: int = 248) -> int:
     return h - 1
 
 
-def _trim_to_content(pix: fitz.Pixmap) -> fitz.Pixmap:
-    """Crop a pixmap to its last content row (used for the final problem only)."""
+def _trim_to_content(
+    pix: fitz.Pixmap,
+    top_pad: int = 8,
+    bottom_pad: int = 8,
+) -> fitz.Pixmap:
+    """Crop a pixmap to its content band, keeping a small pad above and below."""
     try:
-        last_row = _last_content_y(pix)
-        if last_row >= pix.height - 1:
+        first_row = None
+        last_row = None
+        w, h, n = pix.width, pix.height, pix.n
+        samples = pix.samples
+        for row in range(h):
+            row_bytes = samples[row * w * n: (row + 1) * w * n]
+            if any(b < 248 for b in row_bytes):
+                if first_row is None:
+                    first_row = row
+                last_row = row
+        if first_row is None or last_row is None:
             return pix
-        trimmed = fitz.Pixmap(pix, fitz.IRect(0, 0, pix.width, max(1, last_row + 4)))
+        top = max(0, first_row - top_pad)
+        bottom = min(h - 1, last_row + bottom_pad)
+        if top == 0 and bottom == h - 1:
+            return pix
+        new_h = max(1, bottom - top + 1)
+        # fitz.Pixmap(src, irect) is broken in PyMuPDF >=1.25; use copy() instead.
+        # Clipped pixmaps keep page-relative coordinates, so rebase the source to 0,0
+        # before copying the kept rows into the trimmed destination.
+        pix.set_origin(0, -top)
+        trimmed = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, pix.width, new_h), False)
+        trimmed.set_rect(trimmed.irect, (255, 255, 255))
+        trimmed.copy(pix, fitz.IRect(0, 0, pix.width, new_h))
         return trimmed
     except Exception:
-        # If trimming fails, return original pixmap
         return pix
+
+
+def _continuation_top_y(page: fitz.Page) -> float:
+    """Return the top y coordinate for a continuation page, skipping repeated headers."""
+    lines: list[tuple[float, float, str]] = []
+    for block in page.get_text("dict")["blocks"]:
+        if block.get("type") != 0:
+            continue
+        for line in block.get("lines", []):
+            text = "".join(span["text"] for span in line.get("spans", [])).strip()
+            if not text:
+                continue
+            y0 = min(span["bbox"][1] for span in line["spans"])
+            y1 = max(span["bbox"][3] for span in line["spans"])
+            lines.append((y0, y1, text))
+
+    if not lines:
+        return 0.0
+
+    lines.sort(key=lambda item: (item[0], item[1]))
+    for y0, y1, text in lines:
+        if y0 > 120:
+            break
+        if _CONTINUATION_HEADER_RE.match(text):
+            continue
+        return max(0.0, y0 - 2.0)
+
+    return max(0.0, lines[0][0] - 2.0)
+
+
+def _render_page_strip(
+    page: fitz.Page,
+    mat: fitz.Matrix,
+    clip: fitz.Rect,
+) -> fitz.Pixmap:
+    """Render a page strip and trim trailing blank space from the bottom."""
+    pix = page.get_pixmap(matrix=mat, clip=clip, alpha=False)
+    return _trim_to_content(pix)
 
 
 def _render_crop(
@@ -158,20 +223,25 @@ def _render_crop(
         # end_loc.font_size is the label's font size in pts; subtract it plus a gap.
         label_height = end_loc.font_size  # approximate — label baseline ≈ font_size above next y
         bottom_y = end_loc.y - label_height - _LABEL_GAP
-        
-        # For solutions, extend further down to capture multi-part problem solutions
-        if is_solution:
-            # Extend an extra 150 pixels worth of content to capture 2A, 2B, 2C etc.
-            # At scale=2.0, this is ~75pts in document space
-            bottom_y = min(bottom_y + 150 / scale, doc[end_loc.page_index].rect.height if end_loc.page_index < len(doc) else 9999)
     else:
         bottom_y = None  # will use full page then trim
 
     sp = start_loc.page_index
-    ep = end_loc.page_index if end_loc is not None else None
+    if end_loc is not None:
+        ep = end_loc.page_index
+    else:
+        # For the last problem, there is no next label boundary.
+        # Solutions often continue onto pages that do not contain a new
+        # problem label, so allow rendering through the document end.
+        if is_solution:
+            ep = len(doc) - 1
+        else:
+            content_pages = _content_pages(doc)
+            ep = content_pages[-1] if content_pages else sp
+        ep = max(sp, ep)
 
     # ── Same page ─────────────────────────────────────────────────────────────
-    if ep is None or ep == sp:
+    if ep == sp:
         page = doc[sp]
         bot = min(bottom_y, page.rect.height) if bottom_y is not None else page.rect.height
         clip = fitz.Rect(0, top_y, page.rect.width, bot)
@@ -186,22 +256,23 @@ def _render_crop(
     # First page: from top_y to page bottom
     page0 = doc[sp]
     clip0 = fitz.Rect(0, top_y, page0.rect.width, page0.rect.height)
-    strips.append(page0.get_pixmap(matrix=mat, clip=clip0, alpha=False))
+    strips.append(_render_page_strip(page0, mat, clip0))
 
     # Middle pages: full page
     for pi in range(sp + 1, ep):
         if 0 < pi < len(doc):
-            strips.append(doc[pi].get_pixmap(matrix=mat, alpha=False))
+            page_mid = doc[pi]
+            cont_top = _continuation_top_y(page_mid)
+            clip_mid = fitz.Rect(0, cont_top, page_mid.rect.width, page_mid.rect.height)
+            strips.append(_render_page_strip(page_mid, mat, clip_mid))
 
     # End page: from top to bottom_y
     if 0 < ep < len(doc):
         page_e = doc[ep]
         bot_e = min(bottom_y, page_e.rect.height) if bottom_y is not None else page_e.rect.height
-        clip_e = fitz.Rect(0, 0, page_e.rect.width, bot_e)
-        pix_e = page_e.get_pixmap(matrix=mat, clip=clip_e, alpha=False)
-        if is_last:
-            pix_e = _trim_to_content(pix_e)
-        strips.append(pix_e)
+        cont_top = _continuation_top_y(page_e)
+        clip_e = fitz.Rect(0, cont_top, page_e.rect.width, bot_e)
+        strips.append(_render_page_strip(page_e, mat, clip_e))
 
     if not strips:
         pix = doc[sp].get_pixmap(matrix=mat, alpha=False)
@@ -209,15 +280,18 @@ def _render_crop(
     if len(strips) == 1:
         return strips[0].tobytes("png")
 
-    # Stitch vertically
+    # Stitch vertically.
+    # Pixmap.copy(src, irect) reads src at those exact coordinates, so each
+    # strip's origin must be shifted to its target y position before copying.
     w = strips[0].width
     total_h = sum(p.height for p in strips)
     combined = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, w, total_h))
     combined.set_rect(combined.irect, (255, 255, 255))
     y_off = 0
-    for pix in strips:
-        combined.copy(pix, fitz.IRect(0, y_off, w, y_off + pix.height))
-        y_off += pix.height
+    for strip in strips:
+        strip.set_origin(0, y_off)
+        combined.copy(strip, fitz.IRect(0, y_off, w, y_off + strip.height))
+        y_off += strip.height
     return combined.tobytes("png")
 
 

@@ -37,6 +37,8 @@ class ContestChatResponse(BaseModel):
     problems: list[dict] | None = None
     intent: str
     active_agent: str | None = None
+    problem_set_url: str | None = None
+    problem_set_label: str | None = None
 
 
 class ContestSearchRequest(BaseModel):
@@ -75,6 +77,8 @@ def contest_ask(req: ContestChatRequest):
         problems=result.problems,
         intent=result.intent,
         active_agent=result.active_agent,
+        problem_set_url=result.problem_set_url,
+        problem_set_label=result.problem_set_label,
     )
 
 
