@@ -60,6 +60,10 @@
       /* Contest problem panel */
       .contest-panel{margin-top:12px;border:1px solid #fed7aa;border-radius:14px;background:#fff7ed;padding:14px}
       .contest-panel h2{font-size:12px;margin:0 0 12px;color:#9a3412;text-transform:uppercase;letter-spacing:0.08em}
+      .problem-set-download{margin-bottom:12px;padding:10px 12px;border:1px solid #fdba74;border-radius:10px;background:#fff}
+      .problem-set-download .label{font-size:12px;color:#7c2d12;font-weight:700;margin-bottom:8px}
+      .problem-set-download a{display:inline-block;background:#ea580c;color:#fff;text-decoration:none;font-size:12px;padding:7px 12px;border-radius:8px;font-weight:600}
+      .problem-set-download a:hover{background:#c2410c}
 
       /* Problem card — image-based display */
       .problem-card{border:1px solid #fdba74;border-radius:12px;background:#fff;margin-bottom:12px;overflow:hidden}
@@ -164,6 +168,13 @@
       <!-- Contest problem panel -->
       <div class="contest-panel" id="contest-panel" style="display:none">
         <h2>📐 Contest Problems</h2>
+        <div class="problem-set-download" id="problem-set-download" style="display:none">
+          <div class="label" id="problem-set-label">Problem set ready</div>
+          <div style="display:flex;gap:8px">
+            <a id="problem-set-link" href="#" target="_blank" rel="noopener">📄 Problems PDF</a>
+            <a id="solutions-set-link" href="#" target="_blank" rel="noopener" style="display:none">📚 Solutions PDF</a>
+          </div>
+        </div>
         <div id="problem-list"></div>
         <div id="contest-chips-wrap" style="display:none">
           <div style="font-size:12px;color:#9a3412;margin-bottom:5px;font-weight:600">Try asking:</div>
@@ -479,6 +490,27 @@
         problems.slice(0, 4).forEach((p, i) => loadProblemImage(p, i, false));
       }
 
+      function renderProblemSetDownload(url, label, solutionsUrl) {
+        const box = document.getElementById('problem-set-download');
+        const text = document.getElementById('problem-set-label');
+        const link = document.getElementById('problem-set-link');
+        const solLink = document.getElementById('solutions-set-link');
+        if (!url) {
+          box.style.display = 'none';
+          return;
+        }
+        text.textContent = label || 'Problem set ready';
+        link.href = `${API}${url}`;
+        if (solutionsUrl) {
+          solLink.href = `${API}${solutionsUrl}`;
+          solLink.style.display = 'inline-block';
+        } else {
+          solLink.style.display = 'none';
+        }
+        box.style.display = 'block';
+        document.getElementById('contest-panel').style.display = 'block';
+      }
+
       async function loadProblemImage(problem, index, showSolution) {
         const wrap = document.getElementById(`pimg-${index}`);
         if (!wrap) return;
@@ -545,6 +577,17 @@
 
       function sendChip(text) { inputEl.value = text; send(); }
 
+      function clearContestDisplay() {
+        const panel = document.getElementById('contest-panel');
+        const list = document.getElementById('problem-list');
+        const dl = document.getElementById('problem-set-download');
+        const chipsWrap = document.getElementById('contest-chips-wrap');
+        list.innerHTML = '';
+        dl.style.display = 'none';
+        chipsWrap.style.display = 'none';
+        panel.style.display = 'none';
+      }
+
       // ── State update ────────────────────────────────────────────────────────
       function updateState(data) {
         const state = data.state || 'idle';
@@ -603,6 +646,7 @@
 
       async function sendContest(text) {
         document.getElementById('results-panel').style.display = 'none';
+        clearContestDisplay();
         try {
           const res = await fetch(`${API}/contest/ask`, {
             method: 'POST', headers: {'Content-Type':'application/json'},
@@ -617,9 +661,19 @@
             selectedAgent = 'general';
             activeChatMode = 'general';
             document.getElementById('contest-panel').style.display = 'none';
+            return;
           }
-          if (data.problems && data.problems.length) {
+          const hasProblemSet = !!data.problem_set_url;
+          const hasProblems = !!(data.problems && data.problems.length);
+
+          if (hasProblemSet) {
+            renderProblemSetDownload(data.problem_set_url, data.problem_set_label, data.solutions_url);
+          }
+          if (hasProblems) {
             renderProblems(data.problems);
+          }
+          if (!hasProblemSet && !hasProblems) {
+            clearContestDisplay();
           }
         } catch (e) {
           addMsg('bot', 'Could not reach backend. Is it running at http://localhost:8000?', 'contest');

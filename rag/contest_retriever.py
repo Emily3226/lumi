@@ -18,6 +18,77 @@ _collection = None
 _embed_fn = None
 
 
+def _is_missing_collection_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return "collection" in text and "does not exist" in text
+
+
+def _reset_collection_cache() -> None:
+    global _collection
+    _collection = None
+
+
+def _count_with_recovery(col) -> int:
+    try:
+        return col.count()
+    except Exception as e:
+        if _is_missing_collection_error(e):
+            _reset_collection_cache()
+            fresh = _get_collection()
+            if not fresh:
+                return 0
+            try:
+                return fresh.count()
+            except Exception as e2:
+                print(f"⚠ ChromaDB count error after recovery: {e2}")
+                return 0
+        print(f"⚠ ChromaDB count error: {e}")
+        return 0
+
+
+_TOPIC_SIGNALS: dict[str, list[str]] = {
+    "algebra": ["equation", "polynomial", "quadratic", "factor", "expression", "solve"],
+    "number_theory": ["integer", "prime", "divisible", "remainder", "mod", "gcd", "lcm"],
+    "geometry": ["triangle", "circle", "angle", "polygon", "perimeter", "area", "chord", "radius"],
+    "combinatorics": ["permutation", "combination", "probability", "arrangement", "ways"],
+    "sequences": ["sequence", "recurrence", "fibonacci", "common ratio", "common difference", "nth term", "n-th term"],
+    "inequalities": ["inequality", "maximum", "minimum", "bound", "absolute value"],
+    "trigonometry": ["sine", "cosine", "tangent", "sin", "cos", "tan", "radian"],
+    "logic": ["prove", "proof", "if and only if", "contradiction", "induction"],
+}
+
+
+def _contains_signal(text: str, signals: list[str]) -> bool:
+    return any(s in text for s in signals)
+
+
+def _normalize_topics(doc: str, raw_topics: list[str]) -> list[str]:
+    text = (doc or "").lower()
+
+    cleaned: list[str] = []
+    for topic in raw_topics:
+        if topic == "calculus":
+            # Waterloo contests should not be labeled calculus; remap using text cues.
+            continue
+        signals = _TOPIC_SIGNALS.get(topic)
+        if signals and not _contains_signal(text, signals):
+            continue
+        cleaned.append(topic)
+
+    # If labels were empty/filtered, infer one or two likely topics from the problem text.
+    if not cleaned:
+        for topic, signals in _TOPIC_SIGNALS.items():
+            if _contains_signal(text, signals):
+                cleaned.append(topic)
+            if len(cleaned) >= 2:
+                break
+
+    if not cleaned:
+        cleaned = ["algebra"]
+
+    return cleaned
+
+
 def _get_embedding_function():
     global _embed_fn
     if _embed_fn is None:
@@ -50,7 +121,7 @@ def _get_collection():
 
 def collection_count() -> int:
     col = _get_collection()
-    return col.count() if col else 0
+    return _count_with_recovery(col) if col else 0
 
 
 def add_chunks(chunks: list[dict]) -> None:
@@ -70,22 +141,35 @@ def add_chunks(chunks: list[dict]) -> None:
     batch_size = 100
     for i in range(0, len(unique_chunks), batch_size):
         batch = unique_chunks[i: i + batch_size]
-        col.upsert(
-            ids=[c["chunk_id"] for c in batch],
-            documents=[c["document"] for c in batch],
-            metadatas=[c["metadata"] for c in batch],
-        )
+        payload = {
+            "ids": [c["chunk_id"] for c in batch],
+            "documents": [c["document"] for c in batch],
+            "metadatas": [c["metadata"] for c in batch],
+        }
+        try:
+            col.upsert(**payload)
+        except Exception as e:
+            if _is_missing_collection_error(e):
+                _reset_collection_cache()
+                col = _get_collection()
+                if not col:
+                    print("⚠ ChromaDB unavailable while writing chunks")
+                    return
+                col.upsert(**payload)
+            else:
+                raise
 
 
 def _meta_to_result(doc: str, meta: dict, dist: float | None = None) -> dict:
     """Convert a ChromaDB metadata dict into a clean result dict."""
+    raw_topics = [t for t in meta.get("topics", "").split(",") if t]
     result = {
         "document": doc,
         "contest": meta.get("contest", ""),
         "year": int(meta.get("year", 0)),
         "problem_number": int(meta.get("problem_number", 0)) or None,
         "part": meta.get("part") or None,
-        "topics": [t for t in meta.get("topics", "").split(",") if t],
+        "topics": _normalize_topics(doc, raw_topics),
         "grades": [int(g) for g in meta.get("grades", "").split(",") if g],
         "has_solution": meta.get("has_solution") == "True",
         "has_diagram": meta.get("has_diagram") == "True",
@@ -111,7 +195,15 @@ def query(
     topic: str | None = None,
 ) -> list[dict]:
     col = _get_collection()
-    if not col or col.count() == 0:
+    if not col:
+        return []
+
+    total = _count_with_recovery(col)
+    if total == 0:
+        return []
+
+    col = _get_collection()
+    if not col:
         return []
 
     where: dict = {}
@@ -133,15 +225,33 @@ def query(
     try:
         kwargs: dict[str, Any] = {
             "query_texts": [text],
-            "n_results": min(n_results, col.count()),
+            "n_results": min(n_results, total),
             "include": ["documents", "metadatas", "distances"],
         }
         if where:
             kwargs["where"] = where
         results = col.query(**kwargs)
     except Exception as e:
-        print(f"⚠ ChromaDB query error: {e}")
-        return []
+        if _is_missing_collection_error(e):
+            _reset_collection_cache()
+            col = _get_collection()
+            if not col:
+                return []
+            try:
+                kwargs = {
+                    "query_texts": [text],
+                    "n_results": min(n_results, _count_with_recovery(col)),
+                    "include": ["documents", "metadatas", "distances"],
+                }
+                if where:
+                    kwargs["where"] = where
+                results = col.query(**kwargs)
+            except Exception as e2:
+                print(f"⚠ ChromaDB query error after recovery: {e2}")
+                return []
+        else:
+            print(f"⚠ ChromaDB query error: {e}")
+            return []
 
     output = []
     for doc, meta, dist in zip(
@@ -156,7 +266,7 @@ def query(
 
 def get_by_contest_year(contest: str, year: int, n: int = 20) -> list[dict]:
     col = _get_collection()
-    if not col or col.count() == 0:
+    if not col or _count_with_recovery(col) == 0:
         return []
     try:
         results = col.get(
@@ -177,13 +287,39 @@ def get_by_contest_year(contest: str, year: int, n: int = 20) -> list[dict]:
         output.sort(key=lambda x: x["problem_number"] or 0)
         return output
     except Exception as e:
+        if _is_missing_collection_error(e):
+            _reset_collection_cache()
+            col = _get_collection()
+            if not col:
+                return []
+            try:
+                results = col.get(
+                    where={"$and": [
+                        {"contest": {"$eq": contest}},
+                        {"year": {"$eq": str(year)}},
+                    ]},
+                    include=["documents", "metadatas"],
+                    limit=n,
+                )
+                output = [
+                    _meta_to_result(doc, meta)
+                    for doc, meta in zip(
+                        results.get("documents", []),
+                        results.get("metadatas", []),
+                    )
+                ]
+                output.sort(key=lambda x: x["problem_number"] or 0)
+                return output
+            except Exception as e2:
+                print(f"⚠ ChromaDB get error after recovery: {e2}")
+                return []
         print(f"⚠ ChromaDB get error: {e}")
         return []
 
 
 def list_available_contests() -> list[dict]:
     col = _get_collection()
-    if not col or col.count() == 0:
+    if not col or _count_with_recovery(col) == 0:
         return []
     try:
         all_meta = col.get(include=["metadatas"])["metadatas"]
@@ -196,5 +332,25 @@ def list_available_contests() -> list[dict]:
             {"contest": c, "years": sorted(ys, reverse=True), "count": len(ys)}
             for c, ys in sorted(seen.items())
         ]
-    except Exception:
+    except Exception as e:
+        if _is_missing_collection_error(e):
+            _reset_collection_cache()
+            col = _get_collection()
+            if not col:
+                return []
+            try:
+                all_meta = col.get(include=["metadatas"])["metadatas"]
+                seen: dict[str, set] = {}
+                for meta in all_meta:
+                    c = meta.get("contest", "Unknown")
+                    y = meta.get("year", "?")
+                    seen.setdefault(c, set()).add(y)
+                return [
+                    {"contest": c, "years": sorted(ys, reverse=True), "count": len(ys)}
+                    for c, ys in sorted(seen.items())
+                ]
+            except Exception as e2:
+                print(f"⚠ ChromaDB list error after recovery: {e2}")
+                return []
+        print(f"⚠ ChromaDB list error: {e}")
         return []

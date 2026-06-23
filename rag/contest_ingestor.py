@@ -44,10 +44,11 @@ TOPIC_KEYWORDS: dict[str, list[str]] = {
                  "isosceles", "hypotenuse", "diagonal"],
     "combinatorics": ["combination", "permutation", "probability", "count",
                       "arrangement", "choose", "ways", "paths", "pattern"],
-    "calculus": ["limit", "derivative", "integral", "function", "continuous",
-                 "rate of change", "slope", "tangent line"],
-    "sequences": ["arithmetic", "geometric", "sequence", "series", "sum", "term",
-                  "recurrence", "fibonacci", "progression"],
+    # Waterloo contest labels should avoid calculus; function-style problems are
+    # better grouped under algebra unless there is a stronger topical signal.
+    "sequences": ["arithmetic sequence", "geometric sequence", "sequence", "series",
+                  "nth term", "n-th term", "recurrence", "fibonacci", "progression",
+                  "common difference", "common ratio"],
     "inequalities": ["inequality", "maximum", "minimum", "optimize", "bound",
                      "absolute value"],
     "trigonometry": ["sine", "cosine", "tangent", r"\bsin\b", r"\bcos\b",
@@ -59,10 +60,39 @@ TOPIC_KEYWORDS: dict[str, list[str]] = {
 
 def tag_topics(text: str) -> list[str]:
     lower = text.lower()
-    return [
-        topic for topic, kws in TOPIC_KEYWORDS.items()
-        if any(re.search(k, lower) for k in kws)
-    ]
+    found: list[str] = []
+
+    for topic, kws in TOPIC_KEYWORDS.items():
+        hits = 0
+        for k in kws:
+            if re.search(k, lower):
+                hits += 1
+
+        if hits == 0:
+            continue
+
+        # Use stricter thresholds for historically noisy labels.
+        if topic == "geometry" and hits < 2:
+            continue
+        if topic == "sequences":
+            # Avoid false positives from generic words like "series" in prose.
+            strong_seq = (
+                "sequence" in lower
+                or "recurrence" in lower
+                or "fibonacci" in lower
+                or "common ratio" in lower
+                or "common difference" in lower
+                or "n-th term" in lower
+                or "nth term" in lower
+            )
+            if not strong_seq:
+                continue
+
+        found.append(topic)
+
+    if not found:
+        return ["algebra"]
+    return found
 
 
 # ── Contest metadata ──────────────────────────────────────────────────────────
