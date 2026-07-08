@@ -646,7 +646,6 @@
 
       async function sendContest(text) {
         document.getElementById('results-panel').style.display = 'none';
-        clearContestDisplay();
         try {
           const res = await fetch(`${API}/contest/ask`, {
             method: 'POST', headers: {'Content-Type':'application/json'},

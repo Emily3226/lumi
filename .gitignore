@@ -3,6 +3,10 @@
 .venv/
 .vscode/
 
+# Tests
+check_env.py
+tests/
+
 # Python bytecode
 __pycache__/
 *.pyc

@@ -6,10 +6,10 @@ LangChain-style agent for Waterloo Math Contest knowledge.
 v5 — fixes:
   - solution_text now always fetched via get_by_contest_year (not from query results
     which don't include it)
-  - handle_search falls back to Groq for general questions instead of just RAG
-  - system prompt overhauled: Groq responds naturally like an AI assistant,
+  - handle_search falls back to Gemini for general questions instead of just RAG
+  - system prompt overhauled: Gemini responds naturally like an AI assistant,
     trusts problem/solution text it's given, never says a problem is impossible
-  - conversation history passed to every Groq call for better follow-up handling
+  - conversation history passed to every Gemini call for better follow-up handling
 """
 
 from __future__ import annotations
@@ -22,16 +22,14 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-try:
-    from openai import OpenAI
-except Exception:
-    OpenAI = None
+import requests
 
 try:
     import certifi_win32  # noqa: F401
 except Exception:
     certifi_win32 = None
 
+from api.llm_provider import call_cerebras
 from api.problem_set_service import build_problem_set_from_text, is_problem_set_request
 from rag.contest_retriever import (
     collection_count,
@@ -46,7 +44,7 @@ from rag.contest_ingestor import (
     pair_contest_files,
 )
 
-# ── Groq client ───────────────────────────────────────────────────────────────
+# ── LLM client ─────────────────────────────────────────────────────────────
 
 def _load_dotenv_file() -> None:
     env_path = Path(__file__).resolve().parents[1] / ".env"
@@ -85,26 +83,17 @@ def _load_dotenv_file() -> None:
 
 _load_dotenv_file()
 
-_groq_init_error = ""
+_llm_init_error = ""
 
 try:
-    groq_api_key = os.environ.get("GROQ_API_KEY", "").strip()
-    if OpenAI is None:
-        _client = None
-        _groq_init_error = "openai package is not installed"
-    elif not groq_api_key:
-        _client = None
-        _groq_init_error = "GROQ_API_KEY is not set"
-    else:
-        _client = OpenAI(
-            api_key=groq_api_key,
-            base_url="https://api.groq.com/openai/v1",
-        )
+    from api.llm_provider import get_llm_config
+    _, _model, _ = get_llm_config()
+    if not _model:
+        _llm_init_error = "CEREBRAS_MODEL is not set"
 except Exception as e:
-    _client = None
-    _groq_init_error = str(e)
+    _llm_init_error = str(e)
 
-_MODEL = "llama-3.3-70b-versatile"
+_MODEL = os.getenv("CEREBRAS_MODEL", "llama3.1-8b").strip() or "llama3.1-8b"
 
 _SYSTEM_MATH = """\
 You are Lumi, a friendly and knowledgeable AI tutor specialising in Waterloo Math Contests \
@@ -119,13 +108,36 @@ When you are given a contest problem and/or official solution in the prompt:
 - NEVER say a problem is impossible, unsolvable, or lacks information. It is a real \
   competition problem with a real answer. Work with what you are given.
 - If only the problem text is given (no solution), reason through it yourself step by step.
+- CRITICAL: Only explain the single problem given to you in the PROBLEM/OFFICIAL SOLUTION \
+  text above. That text is the complete boundary of what you may discuss.
+- Do NOT continue on to the next problem number, even if you recognize this contest and \
+  remember what comes next from your training data. For example, if given "Problem 1" \
+  with parts (a), (b), (c), your response must stop after part (c) — do NOT add a \
+  "Problem 2" or "2 (a)" section under any circumstances.
+- If you finish explaining the given problem and are tempted to keep going with "the next \
+  problem was...", stop immediately instead. The response should end right after the \
+  final "Answer:" line for the problem you were given.
 
 FORMATTING — always follow these rules:
+- Do NOT use Markdown headers (no "#", "##", "###"). This chat only renders plain text \
+  and **bold** — headers show up as literal hashtag characters. For section titles, use \
+  **bold** text instead, e.g. "**Part (a) — Evaluate the expression**" on its own line.
+- Do NOT use "---" as a horizontal rule/divider between sections either, since it also \
+  renders as literal characters. Use a blank line to separate sections instead.
 - Structure explanations with clear sections. Use blank lines between sections.
 - Number every step: "1.", "2.", "3." etc.
 - Put each step on its own line with a blank line after it.
-- Use plain Unicode math (×, ÷, √, ², ³, ≤, ≥, ≠, π, θ) — absolutely no LaTeX, \
-  no dollar signs, no backslashes.
+- Use plain Unicode math only: ×, ÷, √, ², ³, ≤, ≥, ≠, π, θ, ±, °, ∠, △. NEVER use LaTeX \
+  commands like \\frac, \\sqrt, \\dfrac, \\left, \\right, \\(, \\), \\[, \\], or any backslash. \
+  Write fractions as "(a)/(b)" or "a divided by b", not \\frac{a}{b}. \
+  Write square roots as "√(x)", not \\sqrt{x}. \
+  Write angles as "∠PQR", degrees as "60°", and trig functions as plain text: sin, cos, tan. \
+  Example of WRONG output: \\(\\frac{23-32}{32-23}\\) \
+  Example of CORRECT output: (23−32)/(32−23)
+- When substituting values into an equation, write the full substituted equation on its \
+  own line rather than compressed inline fractions (e.g. write "sin(30°) = 1/2" then \
+  "a / (1/2) = b / (4/5)" as a labeled step, not squeezed together). \
+  Never add footnote-style markers like a trailing ".1" or ".2" after an equation.
 - For the key insight, write it on its own line starting with "Key insight:"
 - Keep each step focused on one idea. Do not write walls of text.
 - End with the final answer clearly stated on its own line: "Answer: ..."
@@ -139,20 +151,126 @@ For general conversation:
 - Warm and encouraging tone suitable for a high school student."""
 
 
+def _delatexify(text: str) -> str:
+    """Convert common LaTeX math notation to plain Unicode, and strip LaTeX delimiters."""
+    text = re.sub(r"\\\(|\\\)|\\\[|\\\]", "", text)
+    text = re.sub(r"\\displaystyle|\\textstyle|\\scriptstyle", "", text)
+
+    sqrt_re = re.compile(r"\\sqrt\{([^{}]*)\}")
+    for _ in range(4):
+        new_text = sqrt_re.sub(r"√(\1)", text)
+        if new_text == text:
+            break
+        text = new_text
+
+    frac_re = re.compile(r"\\d?frac\{([^{}]*)\}\{([^{}]*)\}")
+    for _ in range(4):
+        new_text = frac_re.sub(lambda m: f"({m.group(1)})/({m.group(2)})", text)
+        if new_text == text:
+            break
+        text = new_text
+
+    superscripts = {"0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴",
+                    "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹"}
+    def repl_sup(m):
+        exp = m.group(1)
+        return "".join(superscripts.get(ch, ch) for ch in exp)
+    text = re.sub(r"\^\{([^{}]*)\}", repl_sup, text)
+    text = re.sub(r"\^(\d)", lambda m: superscripts.get(m.group(1), m.group(1)), text)
+    text = re.sub(r"_\{([^{}]*)\}", r"_\1", text)
+
+    replacements = {
+        r"\times": "×", r"\cdot": "·", r"\div": "÷",
+        r"\leq": "≤", r"\geq": "≥", r"\neq": "≠",
+        r"\pi": "π", r"\theta": "θ", r"\pm": "±",
+        r"\infty": "∞", r"\approx": "≈",
+        r"\circ": "°",
+        r"\angle": "∠", r"\triangle": "△",
+        r"\sin": "sin", r"\cos": "cos", r"\tan": "tan",
+        r"\cot": "cot", r"\sec": "sec", r"\csc": "csc",
+        r"\log": "log", r"\ln": "ln",
+        r"\overline": "", r"\underline": "",
+        r"\;": " ", r"\,": " ", r"\!": "",
+        r"\left": "", r"\right": "",
+        r"\dfrac": "", r"\text": "",
+    }
+    for latex, unicode_char in replacements.items():
+        text = text.replace(latex, unicode_char)
+
+    generic_re = re.compile(r"\\[a-zA-Z]+\{([^{}]*)\}")
+    for _ in range(4):
+        new_text = generic_re.sub(r"\1", text)
+        if new_text == text:
+            break
+        text = new_text
+
+    # For any OTHER backslash command we didn't explicitly handle, keep the
+    # word itself (drop only the backslash) rather than deleting it outright.
+    text = re.sub(r"\\([a-zA-Z]+)", r"\1", text)
+    text = text.replace("\\", "")
+    text = text.replace("{", "").replace("}", "")
+
+    # Strip Markdown headers and horizontal rules the frontend can't render —
+    # keep the text but drop the leading "#"s / "---" markers.
+    text = re.sub(r"^#{1,6}\s*", "", text, flags=re.MULTILINE)
+    text = re.sub(r"^-{3,}\s*$", "", text, flags=re.MULTILINE)
+
+    text = re.sub(r"[ \t]{2,}", " ", text)
+
+    return text
+
+
 def _grok(messages: list[dict], max_tokens: int = 1200) -> str:
-    """Call the Groq API and return the assistant text."""
-    if _client is None:
-        reason = _groq_init_error or "Groq client is not configured"
-        return f"_(AI explanation unavailable: {reason}.)_"
+    """Call the Cerebras API and return the assistant text."""
     try:
-        response = _client.chat.completions.create(
-            model=_MODEL,
-            max_tokens=max_tokens,
-            messages=[{"role": "system", "content": _SYSTEM_MATH}] + messages,
-        )
-        return response.choices[0].message.content.strip()
+        payload_messages = [{"role": "system", "content": _SYSTEM_MATH}] + [
+            {"role": str(item.get("role", "user")), "content": str(item.get("content", ""))}
+            for item in messages
+        ]
+        data = call_cerebras(payload_messages, max_tokens=max_tokens, temperature=0.2)
     except Exception as e:
+        import traceback
+        print(f"[DEBUG] Cerebras call failed: {type(e).__name__}: {e}")
+        traceback.print_exc()
         return f"_(AI explanation unavailable: {e})_"
+
+    if not isinstance(data, dict):
+        print(f"[DEBUG] Cerebras returned non-dict data: {type(data)} = {data!r}")
+        return "_(AI explanation unavailable: unexpected LLM response.)_"
+
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        first_choice = choices[0]
+        if isinstance(first_choice, dict):
+            message = first_choice.get("message")
+            if isinstance(message, dict):
+                content = message.get("content")
+                if isinstance(content, str) and content:
+                    content = content.strip()
+                    if _is_garbled(content):
+                        print(f"[DEBUG] Content flagged as garbled by _is_garbled(): {content!r}")
+                        return "_(AI explanation unavailable: garbled model output)_"
+                    return _delatexify(content)
+                if isinstance(content, list):
+                    text_parts = []
+                    for part in content:
+                        if isinstance(part, dict):
+                            text = part.get("text") or part.get("content")
+                            if isinstance(text, str) and text:
+                                text_parts.append(text)
+                    if text_parts:
+                        content = "".join(text_parts).strip()
+                        if content:
+                            return _delatexify(content)
+                print(f"[DEBUG] message.content was empty/unrecognized: {message!r}")
+            else:
+                print(f"[DEBUG] first_choice had no 'message' dict: {first_choice!r}")
+        else:
+            print(f"[DEBUG] choices[0] was not a dict: {first_choice!r}")
+    else:
+        print(f"[DEBUG] No usable 'choices' in response: {data!r}")
+
+    return "_(AI explanation unavailable: LLM returned no text.)_"
 
 
 def _local_solution_explanation(problem_text: str, solution_text: str) -> str:
@@ -186,9 +304,11 @@ def _local_solution_explanation(problem_text: str, solution_text: str) -> str:
             return bool(re.match(r"^[\d\s\-+/=().,]+$", line))
         short = sum(1 for t in tokens if len(t) == 1)
         short_ratio = short / max(1, len(tokens))
-        if len(tokens) >= 5 and short_ratio >= 0.6 and max(len(t) for t in tokens) <= 3:
+        if len(tokens) >= 6 and short_ratio >= 0.30:
             return True
-        if len(tokens) >= 6 and (sum(len(t) for t in tokens) / len(tokens)) < 2.0 and max(len(t) for t in tokens) <= 3:
+        if len(tokens) >= 8 and (sum(len(t) for t in tokens) / len(tokens)) < 2.5 and max(len(t) for t in tokens) <= 3:
+            return True
+        if re.search(r"\b(?:[a-z]\s+){4,}[a-z]\b", low):
             return True
         if len(line) < 8 and not re.search(r"[=<>+\-×÷]", line):
             return True
@@ -211,9 +331,24 @@ def _local_solution_explanation(problem_text: str, solution_text: str) -> str:
             i += 1
             continue
 
-        if not is_header_or_footer(line) and not is_noisy_fragment(line):
+        if not is_header_or_footer(line) and not is_noisy_fragment(line) and not _is_garbled(line):
             cleaned_lines.append(line)
         i += 1
+
+    cleaned_lines = [
+        line for line in cleaned_lines
+        if not re.match(r"^(Part \([a-z]\)|A central equation used is|The conclusion is|In words|The official solution|Official solution summary)", line, re.I)
+    ]
+    cleaned_lines = [line for line in cleaned_lines if len(line.strip()) >= 6]
+
+    if not cleaned_lines:
+        return (
+            "Official solution summary:\n\n"
+            "The official solution text looks too noisy to summarize reliably, so here is the safest study approach:\n\n"
+            "1. Translate each condition into an equation or inequality.\n"
+            "2. Solve the resulting algebraic relationships step by step.\n"
+            "3. Check the final answer against the original constraints."
+        )
 
     if cleaned_lines:
         # Split into (a), (b), (c) parts when available.
@@ -283,15 +418,51 @@ def _local_solution_explanation(problem_text: str, solution_text: str) -> str:
 
 
 def _grok_or_local(messages: list[dict], problem_text: str, solution_text: str, max_tokens: int = 1200) -> str:
-    """Use Groq when available; otherwise fall back to a grounded local explanation."""
+    """Use the configured LLM when available; otherwise fall back to a grounded local explanation."""
     reply = _grok(messages, max_tokens=max_tokens)
     if reply.startswith("_(AI explanation unavailable:"):
         return _local_solution_explanation(problem_text, solution_text)
     return reply
 
 
+def _is_garbled(text: str) -> bool:
+    """Return True if `text` looks like garbled/OCR-output (many isolated letters or low letter density).
+
+    Heuristic rules:
+    - If >20% of whitespace-separated tokens are single letters (and total tokens>10),
+      it's likely broken OCR where letters are split by spaces.
+    - If the proportion of "meaningful" characters (letters, digits, and common math
+      symbols) to total characters is very low, it's likely noisy. Digits and math
+      symbols are included here (not just letters) so that legitimate math-heavy
+      answers (lots of numbers, +, -, =, parentheses, etc.) aren't misflagged as
+      garbled OCR output.
+    - If there are many repeated isolated letters like "e q u a d a t", flag as garbled.
+    """
+    if not text or len(text) < 20:
+        return False
+    import re
+
+    tokens = re.findall(r"\S+", text)
+    if not tokens:
+        return True
+    single_letter = sum(1 for t in tokens if len(t) == 1 and t.isalpha())
+    if len(tokens) > 10 and (single_letter / len(tokens)) > 0.20:
+        return True
+
+    meaningful = re.findall(r"[A-Za-z0-9+\-*/=<>().,\\{}^_√×÷≤≥≠π]", text)
+    if len(meaningful) / max(1, len(text)) < 0.5:
+        return True
+
+    # Detect sequences of spaced single letters (e.g., 'e x a m p l e')
+    spaced_letters = re.search(r"(?:\b[A-Za-z]\b[\s\W]+){4,}", text)
+    if spaced_letters:
+        return True
+
+    return False
+
+
 def _build_history(session: dict, n: int = 6) -> list[dict]:
-    """Return the last n turns of conversation history for Groq."""
+    """Return the last n turns of conversation history for Gemini."""
     history = []
     for turn in session.get("messages", [])[-n:]:
         role = turn.get("role", "user")
@@ -300,6 +471,51 @@ def _build_history(session: dict, n: int = 6) -> list[dict]:
             history.append({"role": role, "content": content})
     return history
 
+
+def _trim_solution_to_problem(solution_text: str, prob_num: int | None) -> str:
+    """Cut solution_text down to just the section for `prob_num`.
+
+    The first problem in a solution PDF often has no leading "N." marker
+    (it may have been consumed by ingestion/page headers), so it starts
+    directly at "(a)". Later problems are marked with "N.\n(a)" style
+    headings. To handle both cases: if an explicit heading for `prob_num`
+    is found, start there; otherwise, if `prob_num` is smaller than every
+    heading found (i.e. it's the first, unlabeled problem), start at the
+    beginning of the text. Either way, stop at the first heading for a
+    different, larger problem number.
+    """
+    if not prob_num or not solution_text:
+        return solution_text
+
+    heading_re = re.compile(r"(?<!\d)(\d{1,2})\.?\s*\(a\)")
+    matches = list(heading_re.finditer(solution_text))
+
+    start_idx = None
+    end_idx = len(solution_text)
+
+    for m in matches:
+        num = int(m.group(1))
+        if num == prob_num and start_idx is None:
+            start_idx = m.start()
+            continue
+        if start_idx is not None and num != prob_num:
+            end_idx = m.start()
+            break
+
+    if start_idx is None:
+        # No explicit heading for this problem — likely the first, unlabeled
+        # problem in the document. Start from the beginning and stop at the
+        # first heading belonging to a different (higher) problem number.
+        if all(int(m.group(1)) > prob_num for m in matches) if matches else True:
+            start_idx = 0
+            for m in matches:
+                if int(m.group(1)) != prob_num:
+                    end_idx = m.start()
+                    break
+        else:
+            return solution_text
+
+    return solution_text[start_idx:end_idx]
 
 def _get_full_problem(contest: str, year: int, prob_num: int) -> dict | None:
     """
@@ -958,7 +1174,7 @@ def handle_specific_problem(text: str, session: dict) -> ContestResult:
 def handle_explain_solution(text: str, session: dict) -> ContestResult:
     """
     Fetch full problem + solution text via get_by_contest_year (not chroma_query,
-    which doesn't return solution_text), then ask Groq to explain step by step.
+    which doesn't return solution_text), then ask the configured LLM to explain step by step.
     """
     contest = _extract_contest(text)
     year = _extract_year(text)
@@ -995,6 +1211,9 @@ def handle_explain_solution(text: str, session: dict) -> ContestResult:
 
     problem_text = result.get("document", "") or result.get("problem_text", "")
     solution_text = result.get("solution_text", "") or ""
+    print(f"[DEBUG-TRIM] About to trim: problem_number={result.get('problem_number')!r} "
+          f"(type={type(result.get('problem_number'))}), solution_text length={len(solution_text)}")
+    solution_text = _trim_solution_to_problem(solution_text, result.get("problem_number"))
 
     has_solution_text = bool(solution_text and solution_text.strip()
                              and solution_text.strip() != problem_text.strip())
@@ -1028,7 +1247,7 @@ def handle_explain_solution(text: str, session: dict) -> ContestResult:
         history + [{"role": "user", "content": prompt}],
         problem_text=problem_text,
         solution_text=solution_text,
-        max_tokens=1500,
+        max_tokens=2500,
     )
     return ContestResult(
         reply=header + explanation,
@@ -1042,6 +1261,7 @@ def handle_followup(text: str, session: dict) -> ContestResult:
     active = session.get("active_problem", {})
     prob_text = active.get("document", "") or active.get("problem_text", "")
     sol_text = active.get("solution_text", "") or ""
+    sol_text = _trim_solution_to_problem(sol_text, active.get("problem_number"))
     prob_label = (
         f"{active.get('contest', '')} {active.get('year', '')} "
         f"Problem {active.get('problem_number', '')}"
@@ -1061,8 +1281,13 @@ def handle_followup(text: str, session: dict) -> ContestResult:
     messages += _build_history(session)
     messages.append({"role": "user", "content": text})
 
-    reply = _grok_or_local(messages, problem_text=prob_text, solution_text=sol_text, max_tokens=1200)
-    return ContestResult(reply=reply, intent="followup", active_agent="contest")
+    reply = _grok_or_local(messages, problem_text=prob_text, solution_text=sol_text, max_tokens=2500)
+    return ContestResult(
+        reply=reply,
+        problems=[active] if active else None,
+        intent="followup",
+        active_agent="contest",
+    )
 
 
 def handle_practice(text: str, session: dict) -> ContestResult:
@@ -1209,7 +1434,7 @@ def handle_search(text: str, session: dict) -> ContestResult:
     """
     For messages that don't match a specific intent:
     - If RAG finds relevant problems, show the cards only (no explanation)
-    - Otherwise, answer conversationally with Groq
+    - Otherwise, answer conversationally with Gemini
     """
     contest = _extract_contest(text)
     year = _extract_year(text)

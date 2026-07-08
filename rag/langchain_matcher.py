@@ -1,105 +1,87 @@
-"""Optional LangChain-based reranker for mentor matching.
+"""Optional LLM-based reranker for mentor matching.
 
-This module attempts to use LangChain + a configured LLM to rerank candidate mentors
-for a given mentee query. If LangChain or a suitable LLM is not available, the
-functions return None so callers can fall back to the existing ranking logic.
+This module attempts to use the configured LLM (Cerebras) to rerank candidate
+mentors for a given mentee query. If the LLM is not available or the call
+fails for any reason, the functions return None so callers can fall back to
+the existing ranking logic.
 """
 from __future__ import annotations
 
 import json
 import logging
-from typing import List, Dict
+from typing import List
+
+from api.llm_provider import call_cerebras
 
 logger = logging.getLogger(__name__)
 
 
+def _extract_text(data: dict) -> str | None:
+    """Pull the assistant text out of a Cerebras chat-completions response."""
+    if not isinstance(data, dict):
+        return None
+
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        first = choices[0]
+        if isinstance(first, dict):
+            message = first.get("message")
+            if isinstance(message, dict):
+                content = message.get("content")
+                if isinstance(content, str) and content:
+                    return content
+                if isinstance(content, list):
+                    text_parts = []
+                    for part in content:
+                        if isinstance(part, dict):
+                            text = part.get("text") or part.get("content")
+                            if isinstance(text, str) and text:
+                                text_parts.append(text)
+                    if text_parts:
+                        return "".join(text_parts)
+    return None
+
+
 def rank_candidates_langchain(mentee: dict, candidates: List[dict], top_k: int = 5) -> List[dict] | None:
-    """Try to rerank `candidates` using LangChain.
+    """Try to rerank `candidates` using the configured LLM (Cerebras).
 
     Returns a new ranked list if successful, otherwise None.
     """
     try:
-        from langchain import PromptTemplate, LLMChain
-
-        # Prefer a small Groq-backed LLM wrapper if possible, else fallback to OpenAI adapter
-        # Build a minimal Groq-backed LangChain LLM implementation only.
-        try:
-            from langchain.llms.base import LLM
-            import os
-            import requests
-
-            class GroqLLM(LLM):
-                def __init__(self, model: str | None = None, temperature: float = 0.2):
-                    self.model = model or os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
-                    self.temperature = temperature
-
-                def _call(self, prompt: str, stop: None | list[str] = None) -> str:
-                    api_key = os.getenv("GROQ_API_KEY", "").strip()
-                    if not api_key:
-                        raise ValueError("GROQ_API_KEY not configured for GroqLLM")
-                    payload = {
-                        "model": self.model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": float(self.temperature),
-                    }
-                    resp = requests.post(
-                        "https://api.groq.com/openai/v1/chat/completions",
-                        headers={"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"},
-                        json=payload,
-                        timeout=20,
-                    )
-                    resp.raise_for_status()
-                    data = resp.json()
-                    choices = data.get("choices") if isinstance(data, dict) else None
-                    if isinstance(choices, list) and choices:
-                        first = choices[0]
-                        msg = first.get("message") if isinstance(first, dict) else None
-                        if isinstance(msg, dict):
-                            content = msg.get("content")
-                            if content:
-                                return str(content)
-                    return ""
-
-            LLMClass = GroqLLM
-            logger.info("LangChain matcher will use GroqLLM if GROQ_API_KEY is set")
-        except Exception as exc:
-            logger.info("GroqLLM not available for LangChain reranker: %s", exc)
-            return None
-
-        # Build prompt listing candidates and asking for ranking in JSON
-        tmpl = (
+        prompt = (
             "You are a mentor-ranking assistant. Given a mentee description and a list of mentor candidates, "
             "rank the mentors by suitability and return a JSON array of objects with keys: name, score (0.0-1.0), explanation.\n\n"
-            "Mentee:\n{mentee}\n\nCandidates:\n{cands}\n\n"
-            "Return only valid JSON. Score should be a number between 0 and 1. "
+            f"Mentee:\n{json.dumps(mentee, ensure_ascii=False)}\n\n"
+            "Candidates:\n"
+            + "\n".join(
+                json.dumps(
+                    {
+                        "name": c.get("name"),
+                        "grade": c.get("grade"),
+                        "subject": c.get("subject"),
+                        "qualifications": c.get("qualifications"),
+                    },
+                    ensure_ascii=False,
+                )
+                for c in candidates[: top_k * 2]
+            )
+            + "\n\nReturn only valid JSON. Score should be a number between 0 and 1."
         )
 
-        prompt = PromptTemplate(template=tmpl, input_variables=["mentee", "cands"])  # type: ignore
+        data = call_cerebras(
+            [{"role": "user", "content": prompt}],
+            max_tokens=512,
+            temperature=0.2,
+        )
+        output = _extract_text(data)
+        if not output:
+            logger.info("LangChain reranker: Cerebras returned no usable text")
+            return None
 
-        # Instantiate LLM (expects environment configuration, e.g., OPENAI_API_KEY)
-        llm = LLMClass(temperature=0.2)  # type: ignore
-        chain = LLMChain(llm=llm, prompt=prompt)
-
-        mentee_str = json.dumps(mentee, ensure_ascii=False)
-        cand_lines = []
-        for c in candidates[: top_k * 2]:
-            # basic fields; avoid dumping nested objects
-            cand_lines.append(json.dumps({
-                "name": c.get("name"),
-                "grade": c.get("grade"),
-                "subject": c.get("subject"),
-                "qualifications": c.get("qualifications"),
-            }, ensure_ascii=False))
-
-        cands_str = "\n".join(cand_lines)
-        output = chain.run(mentee=mentee_str, cands=cands_str)
-
-        # Parse JSON from output
         parsed = None
         try:
             parsed = json.loads(output)
         except Exception:
-            # Attempt to find JSON substring
             start = output.find("[")
             end = output.rfind("]")
             if start != -1 and end != -1 and end > start:
@@ -108,11 +90,11 @@ def rank_candidates_langchain(mentee: dict, candidates: List[dict], top_k: int =
                 except Exception:
                     logger.warning("LangChain reranker returned unparsable JSON: %s", output)
                     return None
+
         if not isinstance(parsed, list):
             logger.warning("LangChain reranker returned non-list JSON: %s", parsed)
             return None
 
-        # Build mapping name -> score/explanation
         score_map = {}
         for item in parsed:
             name = item.get("name")
@@ -124,7 +106,6 @@ def rank_candidates_langchain(mentee: dict, candidates: List[dict], top_k: int =
             if name:
                 score_map[str(name)] = {"score": score, "explanation": explanation}
 
-        # Attach scores to original candidates and sort
         out = []
         for c in candidates:
             meta = score_map.get(c.get("name"), {"score": 0.0, "explanation": ""})
@@ -135,10 +116,11 @@ def rank_candidates_langchain(mentee: dict, candidates: List[dict], top_k: int =
             out.append(newc)
 
         out.sort(key=lambda x: x.get("match_score", 0.0), reverse=True)
-        try:
-            logger.info("LangChain reranker used for mentee %s; returning %d candidates", mentee.get("name"), len(out[:top_k]))
-        except Exception:
-            logger.info("LangChain reranker used; returning candidates")
+        logger.info(
+            "LangChain reranker used for mentee %s; returning %d candidates",
+            mentee.get("name"),
+            len(out[:top_k]),
+        )
         return out[:top_k]
 
     except Exception as exc:  # pragma: no cover - optional integration

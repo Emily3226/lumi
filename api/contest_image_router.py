@@ -367,3 +367,99 @@ def get_page_image(
     }
     _render_cache[render_key] = response
     return response
+
+
+def prewarm_cache() -> None:
+    """
+    Pre-render every known problem's problem-page and solution-page images at
+    startup, so the first real user to view any problem doesn't pay the
+    multi-page-render cost themselves. Runs once, synchronously, at app boot.
+    """
+    import time
+    from rag.contest_retriever import list_available_contests, get_by_contest_year
+
+    start = time.monotonic()
+    warmed = 0
+    failed = 0
+
+    try:
+        available = list_available_contests()
+    except Exception as e:
+        print(f"[PREWARM] Could not list contests: {e}")
+        return
+
+    for item in available:
+        contest = item.get("contest")
+        years = item.get("years", [])
+        for year_str in years:
+            try:
+                year = int(year_str)
+            except Exception:
+                continue
+            try:
+                rows = get_by_contest_year(contest, year, n=30)
+            except Exception as e:
+                print(f"[PREWARM] Failed to fetch {contest} {year}: {e}")
+                continue
+
+            for row in rows:
+                pdf_path = row.get("pdf_path")
+                solution_pdf_path = row.get("solution_pdf_path")
+                prob_num = row.get("problem_number")
+                if not pdf_path or not prob_num:
+                    continue
+
+                # Warm the problem-page render
+                try:
+                    _prewarm_one(pdf_path, prob_num, contest, False, solution_pdf_path)
+                    warmed += 1
+                except Exception as e:
+                    failed += 1
+                    print(f"[PREWARM] Failed problem render {contest} {year} Q{prob_num}: {e}")
+
+                # Warm the solution-page render (this is the slow, multi-page one)
+                if solution_pdf_path:
+                    try:
+                        _prewarm_one(pdf_path, prob_num, contest, True, solution_pdf_path)
+                        warmed += 1
+                    except Exception as e:
+                        failed += 1
+                        print(f"[PREWARM] Failed solution render {contest} {year} Q{prob_num}: {e}")
+
+    elapsed = time.monotonic() - start
+    print(f"[PREWARM] Done: {warmed} images cached, {failed} failed, took {elapsed:.1f}s")
+
+
+def _prewarm_one(pdf_path: str, prob_num: int, contest: str, show_solution: bool, solution_pdf_path: str) -> None:
+    """Render and cache a single problem/solution image, reusing the same logic as the endpoint."""
+    target = solution_pdf_path if (show_solution and solution_pdf_path) else pdf_path
+    if not _safe(target):
+        return
+
+    scale = 2.0
+    render_key = (target, prob_num, contest, show_solution, scale)
+    if render_key in _render_cache:
+        return
+
+    doc = _get_doc(target)
+    labels = _get_labels(target, contest)
+    start_loc = labels.get(prob_num)
+    if start_loc is None:
+        return
+
+    sorted_locs = sorted(labels.values(), key=lambda loc: (loc.page_index, loc.y))
+    next_loc = None
+    for loc in sorted_locs:
+        if loc.page_index > start_loc.page_index or (
+            loc.page_index == start_loc.page_index and loc.y > start_loc.y
+        ):
+            next_loc = loc
+            break
+    is_last = next_loc is None
+
+    png = _render_crop(doc, start_loc, next_loc, scale, is_last, is_solution=show_solution)
+    _render_cache[render_key] = {
+        "image_base64": base64.b64encode(png).decode(),
+        "cropped": True,
+        "page": start_loc.page_index,
+    }

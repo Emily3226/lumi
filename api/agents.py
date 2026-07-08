@@ -17,6 +17,7 @@ import requests
 from api.services import book_pairing_in_db, get_mentor_slots, list_available_mentors, match_mentors
 from api.memory_store import get_memory_context, clear_session_memory
 from api.email_service import send_booking_confirmation
+from api.llm_provider import call_cerebras
 from rag.subject_utils import subject_key
 
 
@@ -64,8 +65,8 @@ def _load_dotenv_file() -> None:
 
 _load_dotenv_file()
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant").strip() or "llama-3.1-8b-instant"
+CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "").strip()
+CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "llama3.1-8b").strip() or "llama3.1-8b"
 AUXILIUM_SUPPORT_EMAIL = "auxilium.mentorship@gmail.com"
 SUPPORT_HANDOFF_MESSAGE = (
     f"I’m not sure how to help with that yet. If you want to reach the Auxilium coordinators, email {AUXILIUM_SUPPORT_EMAIL}. "
@@ -74,9 +75,9 @@ SUPPORT_HANDOFF_MESSAGE = (
 
 UNKNOWN_REQUEST_MESSAGE = SUPPORT_HANDOFF_MESSAGE
 
-GROQ_NOT_CONFIGURED_MESSAGE = (
-    f"I can hand off to the AI fallback, but `GROQ_API_KEY` is not set yet. If you need help now, email the Auxilium coordinators at {AUXILIUM_SUPPORT_EMAIL}. "
-    "Put `GROQ_API_KEY` in the repo root `.env` file and restart the backend to re-enable AI fallback."
+LLM_NOT_CONFIGURED_MESSAGE = (
+    f"I can hand off to the AI fallback, but `CEREBRAS_API_KEY` is not set yet. If you need help now, email the Auxilium coordinators at {AUXILIUM_SUPPORT_EMAIL}. "
+    "Put `CEREBRAS_API_KEY` in the repo root `.env` file and restart the backend to re-enable AI fallback."
 )
 
 # Session states involved in the booking confirmation flow.
@@ -466,9 +467,9 @@ def _score_general_knowledge(message: str, text: str) -> int:
     return score
 
 
-def _groq_api_key() -> str:
+def _llm_api_key() -> str:
     _load_dotenv_file()
-    return os.getenv("GROQ_API_KEY", GROQ_API_KEY).strip()
+    return os.getenv("CEREBRAS_API_KEY", CEREBRAS_API_KEY).strip()
 
 
 def _format_slot_list(slots: list[dict]) -> str:
@@ -677,7 +678,7 @@ class MentorTaskAgents:
                 return chat_answer
 
         # If the user requests a transformation (summarize/explain/translate/etc.),
-        # bypass the KB and send directly to Groq for best-effort processing.
+        # bypass the KB and send directly to the configured LLM for best-effort processing.
         if _is_transformation_request(message):
             chat_answer = self._answer_from_free_chat(message, session, force_date=False)
             if chat_answer:
@@ -691,8 +692,8 @@ class MentorTaskAgents:
         if chat_answer:
             return chat_answer
 
-        if not _groq_api_key():
-            return GROQ_NOT_CONFIGURED_MESSAGE
+        if not _llm_api_key():
+            return LLM_NOT_CONFIGURED_MESSAGE
 
         return UNKNOWN_REQUEST_MESSAGE
 
@@ -744,8 +745,8 @@ class MentorTaskAgents:
             "The local knowledge file did not contain an answer for this question. Provide a concise, helpful reply using any recent conversation context supplied. "
             "If uncertain, give a best-effort response and say so clearly."
         )
-        groq_api_key = _groq_api_key()
-        if not groq_api_key:
+        cerebras_api_key = _llm_api_key()
+        if not cerebras_api_key:
             return None
 
         history = session.get("messages", [])
@@ -758,29 +759,46 @@ class MentorTaskAgents:
         messages.extend({"role": item["role"], "content": str(item["content"])} for item in recent_history)
         messages.append({"role": "user", "content": message})
 
-        payload = {
-            "model": GROQ_MODEL,
-            "messages": messages,
-            "temperature": 0.6,
-        }
-
         try:
-            response = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Content-Type": "application/json", "Authorization": f"Bearer {groq_api_key}"},
-                json=payload,
-                timeout=20,
+            data = call_cerebras(
+                [{"role": "system", "content": prompt}],
+                max_tokens=1024,
+                temperature=0.6,
             )
-            response.raise_for_status()
-            data = response.json()
         except requests.RequestException as exc:
-            logger.warning("Groq fallback request failed: %s", exc)
+            logger.warning("Cerebras fallback request failed: %s", exc)
             return None
         except ValueError as exc:
-            logger.warning("Groq fallback returned invalid JSON: %s", exc)
+            logger.warning("Cerebras fallback returned invalid JSON: %s", exc)
             return None
 
-        choices = data.get("choices") if isinstance(data, dict) else None
+        if not isinstance(data, dict):
+            return None
+
+        choices = data.get("choices")
+        if isinstance(choices, list) and choices:
+            first_choice = choices[0]
+            if isinstance(first_choice, dict):
+                choice_message = first_choice.get("message")
+                if isinstance(choice_message, dict):
+                    content = choice_message.get("content")
+                    if isinstance(content, str) and content:
+                        return content.strip()
+                    if isinstance(content, list):
+                        text_parts = []
+                        for part in content:
+                            if isinstance(part, dict):
+                                text = part.get("text") or part.get("content")
+                                if isinstance(text, str) and text:
+                                    text_parts.append(text)
+                        if text_parts:
+                            return "".join(text_parts).strip()
+        return None
+
+        if not isinstance(data, dict):
+            return None
+
+        choices = data.get("choices")
         if isinstance(choices, list) and choices:
             first_choice = choices[0]
             if isinstance(first_choice, dict):
@@ -789,6 +807,19 @@ class MentorTaskAgents:
                     content = choice_message.get("content")
                     if content:
                         return str(content).strip()
+
+        candidates = data.get("candidates")
+        if isinstance(candidates, list) and candidates:
+            first_candidate = candidates[0]
+            if isinstance(first_candidate, dict):
+                candidate_text = first_candidate.get("content") or first_candidate.get("output") or first_candidate.get("text")
+                if isinstance(candidate_text, str) and candidate_text:
+                    return candidate_text.strip()
+                if isinstance(candidate_text, dict):
+                    inner_text = candidate_text.get("text") or candidate_text.get("output")
+                    if isinstance(inner_text, str) and inner_text:
+                        return inner_text.strip()
+
         return None
 
     def _build_booking_summary(self, session: dict[str, Any], mentor: dict[str, Any]) -> str:

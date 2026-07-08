@@ -53,6 +53,15 @@ app.add_middleware(
 
 init_db()
 
+# Pre-render all known problem/solution images at startup so the first real
+# user request for any problem is served from cache instead of paying the
+# full (potentially multi-page) render cost themselves.
+# try:
+#     from api.contest_image_router import prewarm_cache
+#     prewarm_cache()
+# except Exception as e:
+#     print(f"[PREWARM] Skipped due to error: {e}")
+
 
 @app.get("/")
 def root():
