@@ -17,6 +17,13 @@ __pycache__/
 data/lumi.db
 data/chat_sessions.json
 
+# Runtime & user data (should not be tracked)
+data/user_memory.json
+
+# Chroma/vector DB (large, generated)
+data/contest_chroma/
+data/contest_chroma/*.sqlite3
+
 # ML model artifacts
 models/*.pkl
 models/*.joblib
