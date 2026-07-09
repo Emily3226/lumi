@@ -5,13 +5,14 @@ One-time migration: copies the schema and data from the local SQLite
 database (data/lumi.db) into a Neon Postgres database.
 
 Usage:
-    1. Set your Neon connection string as an environment variable:
+    1. Make sure DATABASE_URL is set in your .env file at the project root
+       (it will be loaded automatically), or export it directly:
 
          export DATABASE_URL="postgresql://user:password@ep-xxxx.neon.tech/dbname?sslmode=require"
 
        (On Windows PowerShell: $env:DATABASE_URL = "postgresql://...")
 
-    2. Run:
+    2. Run from the project root:
 
          python scripts/migrate_to_neon.py
 
@@ -32,6 +33,13 @@ import psycopg2
 
 ROOT = Path(__file__).resolve().parents[1]
 SQLITE_PATH = ROOT / "data" / "lumi.db"
+
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from api.env import load_dotenv_once
+
+load_dotenv_once()
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
