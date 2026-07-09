@@ -14,9 +14,9 @@
          differ — everything below derives from this block.
          ============================================================ */
       :root{
-        --bg:#F5F8F7; --card:#ffffff; --accent:#2F6F63; --accent-deep:#1F4D44;
-        --user:#2F6F63; --bot-bg:#DCEAE6; --bot-text:#1F2E2B;
-        --muted:#4B5A56; --ink:#1F2E2B; --line:#CFDCD8;
+        --bg:#F7F5FA; --card:#ffffff; --accent:#6B46A3; --accent-deep:#4E3878;
+        --user:#6B46A3; --bot-bg:#EDE6F5; --bot-text:#2B2140;
+        --muted:#6B6178; --ink:#2B2140; --line:#DDD3E8;
         --contest:#C97A2E; --contest-bg:#FBF0E1; --contest-line:#EAD2AC;
         --match:#5B7FA6; --match-bg:#EAF1F8; --match-line:#CFE0EE;
         --font-display:"Fraunces", Georgia, serif;
@@ -51,16 +51,10 @@
       .avatar.match{background:var(--match)}
       .avatar.contest{background:var(--contest)}
 
-      /* Status pills */
-      .status-row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 12px}
-      .status-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--match-bg);color:var(--match);border:1px solid var(--match-line)}
-      .status-pill[data-state="idle"]{background:#EAF3F1;color:var(--accent-deep);border-color:var(--line)}
-      .status-pill[data-state="showing_results"]{background:#EAF3EA;color:#3C6B3C;border-color:#CFE3CF}
-      .status-pill[data-state="awaiting_booking_name"]{background:var(--contest-bg);color:#8A5A22;border-color:var(--contest-line)}
-
       /* Agent buttons */
-      .quick-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
-      .quick-action{background:var(--match-bg);color:var(--match);border:1px solid var(--match-line);font-size:13px;padding:7px 13px;border-radius:12px;cursor:pointer;font-family:var(--font-body);font-weight:500}
+      .quick-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+      .quick-action{display:inline-flex;align-items:center;gap:7px;background:var(--match-bg);color:var(--match);border:1px solid var(--match-line);font-size:13px;padding:7px 14px;border-radius:12px;cursor:pointer;font-family:var(--font-body);font-weight:500}
+      .quick-action .agent-icon{flex-shrink:0}
       .quick-action:hover{background:#DCE9F3}
       .quick-action.active{background:var(--accent);color:#fff;border-color:var(--accent-deep)}
       .quick-action.contest-btn{background:var(--contest-bg);color:#8A5A22;border-color:var(--contest-line)}
@@ -145,8 +139,6 @@
       button{background:var(--accent);color:white;border:none;padding:10px 18px;border-radius:14px;cursor:pointer;font-size:14px;font-weight:600;font-family:var(--font-body)}
       button:hover{background:var(--accent-deep)}
       button:active{transform:translateY(1px)}
-      .example-btn{background:var(--bg);border:1px solid var(--line);color:var(--ink);font-size:12.5px;padding:6px 12px;border-radius:10px;cursor:pointer;font-family:var(--font-body)}
-      .example-btn:hover{background:var(--bot-bg)}
       @media(prefers-reduced-motion: reduce){ *{transition:none !important} }
       @media(max-width:640px){.container{padding:16px 12px 24px}}
     </style>
@@ -168,24 +160,18 @@
       </header>
 
       <div class="quick-actions">
-        <button type="button" class="quick-action active" data-agent="general">🧠 General Agent</button>
-        <button type="button" class="quick-action" data-agent="match">🤝 Match Agent</button>
-        <button type="button" class="quick-action contest-btn" data-agent="contest">🏆 Contest Help</button>
-      </div>
-
-      <div class="status-row" id="status-row">
-        <span class="status-pill" id="agent-pill">Agent: General</span>
-        <span class="status-pill" data-state="idle" id="state-pill">State: idle</span>
-        <span class="status-pill" id="booking-pill">Booking: none</span>
-      </div>
-
-      <div class="panel" id="suggestions" style="margin-top:8px">
-        <h2>Try these</h2>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="example-btn" id="ex1">I need help with calculus</button>
-          <button class="example-btn" id="ex2">Find a physics tutor</button>
-          <button class="example-btn" id="ex3">Show all mentors</button>
-        </div>
+        <button type="button" class="quick-action active" data-agent="general">
+          <svg class="agent-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2v4M10 14v4M2 10h4M14 10h4M4.8 4.8l2.6 2.6M12.6 12.6l2.6 2.6M4.8 15.2l2.6-2.6M12.6 7.4l2.6-2.6"/></svg>
+          General Agent
+        </button>
+        <button type="button" class="quick-action" data-agent="match">
+          <svg class="agent-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.2" cy="10" r="4.6"/><circle cx="12.8" cy="10" r="4.6"/></svg>
+          Match Agent
+        </button>
+        <button type="button" class="quick-action contest-btn" data-agent="contest">
+          <svg class="agent-icon" viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8v3.2a4 4 0 0 1-8 0V3z"/><path d="M6 4H3.2v1a3 3 0 0 0 3 3"/><path d="M14 4h2.8v1a3 3 0 0 1-3 3"/><path d="M10 10.2v2.8"/><path d="M7.3 17h5.4"/><path d="M8.3 13.8h3.4V17H8.3z"/></svg>
+          Contest Help
+        </button>
       </div>
 
       <div id="messages" aria-live="polite"></div>
@@ -245,7 +231,6 @@
         selectedAgent = agent || 'general';
         activeChatMode = selectedAgent;
         document.querySelectorAll('.quick-action').forEach((item) => item.classList.toggle('active', item.dataset.agent === selectedAgent));
-        document.getElementById('agent-pill').textContent = `Agent: ${displayAgentName(selectedAgent)}`;
         if (selectedAgent !== 'match') {
           document.getElementById('results-panel').style.display = 'none';
         }
@@ -269,22 +254,25 @@
         });
       });
 
-      // Example prompt buttons
-      document.getElementById('ex1').addEventListener('click', ()=>{ inputEl.value='I need help with calculus'; send(); });
-      document.getElementById('ex2').addEventListener('click', ()=>{ inputEl.value='Find a physics tutor'; send(); });
-      document.getElementById('ex3').addEventListener('click', ()=>{ inputEl.value='Show all mentors'; send(); });
-
       inputEl.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
       document.getElementById('send').onclick = send;
 
       // ── Message rendering ───────────────────────────────────────────────────
+      // Shared minimalist icon set — same marks used on the agent buttons above
+      const AGENT_ICONS = {
+        general: '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 2v4M10 14v4M2 10h4M14 10h4M4.8 4.8l2.6 2.6M12.6 12.6l2.6 2.6M4.8 15.2l2.6-2.6M12.6 7.4l2.6-2.6"/></svg>',
+        match: '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.2" cy="10" r="4.6"/><circle cx="12.8" cy="10" r="4.6"/></svg>',
+        contest: '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h8v3.2a4 4 0 0 1-8 0V3z"/><path d="M6 4H3.2v1a3 3 0 0 0 3 3"/><path d="M14 4h2.8v1a3 3 0 0 1-3 3"/><path d="M10 10.2v2.8"/><path d="M7.3 17h5.4"/><path d="M8.3 13.8h3.4V17H8.3z"/></svg>',
+        user: '<svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="7" r="3.2"/><path d="M3.5 17c1.1-3.4 4-5 6.5-5s5.4 1.6 6.5 5"/></svg>',
+      };
+
       function addMsg(role, text, avatarType) {
         const wrap = document.createElement('div');
         wrap.className = 'msg ' + role;
         const av = document.createElement('div');
         const effectiveAvatar = avatarType || (role === 'bot' ? 'general' : role);
         av.className = 'avatar ' + effectiveAvatar;
-        av.textContent = role === 'user' ? 'Y' : (effectiveAvatar === 'contest' ? '🏆' : effectiveAvatar === 'match' ? '🤝' : '🧠');
+        av.innerHTML = role === 'user' ? AGENT_ICONS.user : (AGENT_ICONS[effectiveAvatar] || AGENT_ICONS.general);
         const bub = document.createElement('div');
         bub.className = 'bubble';
         bub.innerHTML = escHtml(text)
@@ -634,10 +622,6 @@
         } else if (data.active_agent && data.active_agent !== 'contest') {
           activeChatMode = data.active_agent;
         }
-        const sp = document.getElementById('state-pill');
-        sp.textContent = `State: ${state.replace(/_/g,' ')}`;
-        sp.dataset.state = state;
-        document.getElementById('booking-pill').textContent = `Booking: ${booking.replace(/_/g,' ')}`;
         const bs = document.getElementById('book-state');
         bs.style.display = booking && booking !== 'none' ? 'block' : 'none';
         bs.textContent = booking !== 'none' ? `Booking: ${booking.replace(/_/g,' ')}` : '';
