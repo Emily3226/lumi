@@ -109,7 +109,7 @@ def _model_candidates(primary_model: str) -> list[str]:
     return candidates
 
 
-def call_cerebras(messages: list[dict[str, Any]], *, max_tokens: int = 1200, temperature: float = 0.2) -> dict[str, Any]:
+def call_cerebras(messages: list[dict[str, Any]], *, max_tokens: int = 1200, temperature: float = 0.2, timeout: int = 30) -> dict[str, Any]:
     import requests
 
     api_key, model, base_url = get_llm_config()
@@ -129,15 +129,22 @@ def call_cerebras(messages: list[dict[str, Any]], *, max_tokens: int = 1200, tem
             "stream": False,
         }
 
-        response = requests.post(
-            f"{base_url.rstrip('/')}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-            timeout=60,
-        )
+        try:
+            response = requests.post(
+                f"{base_url.rstrip('/')}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=timeout,
+            )
+        except requests.Timeout as exc:
+            # Don't retry other candidate models on a timeout - that's how a
+            # single slow call turns into (timeout x num_candidates) of
+            # total wait. Fail fast so callers can fall back immediately.
+            last_error = exc
+            break
 
         if response.ok:
             return response.json()

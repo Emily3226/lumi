@@ -51,6 +51,11 @@ def is_problem_set_request(text: str) -> bool:
     return has_generate and has_target
 
 
+def _wants_solutions(text: str) -> bool:
+    t = " ".join(text.lower().strip().split())
+    return any(word in t for word in ("solution", "solutions", "answer key", "answers", "with answers"))
+
+
 def _extract_count(text: str) -> int:
     m = _COUNT_RE.search(text)
     if m:
@@ -311,30 +316,35 @@ def build_problem_set_from_text(text: str) -> ProblemSetResult:
 
     label = f"{written}-problem set ({', '.join(contests)}{year_span})"
     solutions_url = None
-    # Attempt to build a solutions PDF if solution pages are available for selected problems
-    try:
-        sol_pdf = fitz.open()
-        sol_written = 0
-        for p in rendered:
-            try:
-                if p.get("solution_pdf_path"):
-                    _add_solution_page(sol_pdf, p)
-                    sol_written += 1
-            except Exception:
-                continue
-        if sol_written > 0:
-            sol_filename = f"solutions_set_{safe_contests}_{stamp}.pdf"
-            sol_out = _output_dir() / sol_filename
-            sol_pdf.save(str(sol_out), deflate=True)
-            solutions_url = f"/frontend/generated/{sol_filename}"
-    except Exception:
-        # Ignore solution-generation failures — we still have the problems PDF
-        solutions_url = None
-    finally:
+    # Only pay the (roughly doubled) render cost for a solutions PDF when the
+    # user actually asked for solutions/answers - this was previously always
+    # built, which is what made problem-set requests slow/timeout-prone.
+    if _wants_solutions(text):
+        sol_pdf = None
         try:
-            sol_pdf.close()
+            sol_pdf = fitz.open()
+            sol_written = 0
+            for p in rendered:
+                try:
+                    if p.get("solution_pdf_path"):
+                        _add_solution_page(sol_pdf, p)
+                        sol_written += 1
+                except Exception:
+                    continue
+            if sol_written > 0:
+                sol_filename = f"solutions_set_{safe_contests}_{stamp}.pdf"
+                sol_out = _output_dir() / sol_filename
+                sol_pdf.save(str(sol_out), deflate=True)
+                solutions_url = f"/frontend/generated/{sol_filename}"
         except Exception:
-            pass
+            # Ignore solution-generation failures — we still have the problems PDF
+            solutions_url = None
+        finally:
+            if sol_pdf is not None:
+                try:
+                    sol_pdf.close()
+                except Exception:
+                    pass
 
     return ProblemSetResult(
         ok=True,

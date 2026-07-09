@@ -335,6 +335,7 @@ def _rewrite_user_message(message: str, session: dict[str, Any], forced_agent: s
             ],
             max_tokens=250,
             temperature=0.0,
+            timeout=12,
         )
     except Exception:
         return PromptRewriteResult(
@@ -378,17 +379,21 @@ def _contains_any(tokens: set[str], words: set[str]) -> bool:
     return bool(tokens & words)
 
 
-def reset_session(session: dict[str, Any]) -> None:
-    """Wipe per-conversation session state and the persistent memory store.
+def reset_session(session: dict[str, Any], session_id: str | None = None) -> None:
+    """Wipe per-conversation session state and THAT session's memory store.
 
     Call this whenever a brand-new session/conversation begins (e.g. when the
     frontend opens a fresh chat) so leftover state - mentee details, active
     agent, pending bookings, persisted facts/examples from a previous session
-    - doesn't bleed into the new one.
+    - doesn't bleed into the new one. Only the given session_id's memory is
+    cleared; other users'/sessions' memory is untouched.
     """
+    # Preserve session_id across the clear so memory stays correctly scoped.
+    session_id = session_id or session.get("session_id")
     session.clear()
     session.update(
         {
+            "session_id": session_id,
             "state": "idle",
             "subject": None,
             "grade": None,
@@ -404,7 +409,7 @@ def reset_session(session: dict[str, Any]) -> None:
         }
     )
     try:
-        clear_session_memory()
+        clear_session_memory(session_id)
     except Exception:
         logger.exception("Failed to clear persistent session memory")
 
@@ -639,6 +644,7 @@ class MentorTaskAgents:
         )
 
     def run(self, session_id: str, message: str, session: dict[str, Any], forced_agent: str | None = None) -> AgentResult:
+        session["session_id"] = session_id
         intent = self._intent_for(message, session, forced_agent)
         rewrite = _rewrite_user_message(message, session, forced_agent, intent)
         session["last_agent_prompt"] = rewrite.formatted_prompt
@@ -895,7 +901,7 @@ class MentorTaskAgents:
             date_context = f"The current date is {today}. Use it when answering date and time questions. "
 
         memory_context = _build_memory_context(session)
-        persistent_memory = get_memory_context()
+        persistent_memory = get_memory_context(session.get("session_id"))
         if persistent_memory:
             memory_context = (memory_context + "\n\n" if memory_context else "") + persistent_memory
         if memory_context:

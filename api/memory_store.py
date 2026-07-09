@@ -6,9 +6,15 @@ from pathlib import Path
 from typing import Any
 
 
-MEMORY_STORE_PATH = Path(__file__).resolve().parents[1] / "data" / "user_memory.json"
+# Each session gets its own memory file so one user's conversation can never
+# wipe or bleed into another user's. Legacy single-file store (pre-fix) is
+# kept only as a fallback default filename.
+MEMORY_STORE_DIR = Path(__file__).resolve().parents[1] / "data" / "user_memory"
+_LEGACY_MEMORY_STORE_PATH = Path(__file__).resolve().parents[1] / "data" / "user_memory.json"
 MAX_FACTS = 60
 MAX_EXAMPLES = 12
+
+_SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_\-]")
 
 
 def _default_memory() -> dict[str, Any]:
@@ -20,12 +26,20 @@ def _default_memory() -> dict[str, Any]:
     }
 
 
-def load_memory() -> dict[str, Any]:
-    if not MEMORY_STORE_PATH.exists():
+def _memory_path(session_id: str | None) -> Path:
+    if not session_id:
+        return _LEGACY_MEMORY_STORE_PATH
+    safe_id = _SAFE_ID_RE.sub("_", session_id)[:128]
+    return MEMORY_STORE_DIR / f"{safe_id}.json"
+
+
+def load_memory(session_id: str | None = None) -> dict[str, Any]:
+    path = _memory_path(session_id)
+    if not path.exists():
         return _default_memory()
 
     try:
-        raw = MEMORY_STORE_PATH.read_text(encoding="utf-8")
+        raw = path.read_text(encoding="utf-8")
         data = json.loads(raw) if raw.strip() else {}
     except (OSError, ValueError, json.JSONDecodeError):
         return _default_memory()
@@ -42,29 +56,41 @@ def load_memory() -> dict[str, Any]:
     return memory
 
 
-memory: dict[str, Any] = load_memory()
+# In-memory cache of per-session memory dicts, keyed by session_id
+# ("" used for the legacy/no-session fallback).
+_memory_cache: dict[str, dict[str, Any]] = {}
 
 
-def save_memory() -> None:
-    MEMORY_STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = MEMORY_STORE_PATH.with_suffix(".tmp")
+def _get_memory(session_id: str | None) -> dict[str, Any]:
+    key = session_id or ""
+    if key not in _memory_cache:
+        _memory_cache[key] = load_memory(session_id)
+    return _memory_cache[key]
+
+
+def save_memory(session_id: str | None = None) -> None:
+    memory = _get_memory(session_id)
+    path = _memory_path(session_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = path.with_suffix(".tmp")
     temp_path.write_text(json.dumps(memory, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp_path.replace(MEMORY_STORE_PATH)
+    temp_path.replace(path)
 
 
-def clear_session_memory() -> None:
-    """Reset the persistent memory store to its defaults.
+def clear_session_memory(session_id: str | None = None) -> None:
+    """Reset ONE session's persistent memory to defaults.
 
-    Intended to be called whenever a brand-new conversation/session starts,
-    so facts, summaries, and examples from a previous user/session don't leak
-    into a new one.
+    Intended to be called whenever that specific conversation/session is
+    reset, so facts, summaries, and examples from its previous history don't
+    leak into the new one. This only ever touches the given session_id's
+    memory file - never any other user's.
     """
-    global memory
-    memory = _default_memory()
-    save_memory()
+    key = session_id or ""
+    _memory_cache[key] = _default_memory()
+    save_memory(session_id)
 
 
-def _add_fact(fact: str) -> None:
+def _add_fact(memory: dict[str, Any], fact: str) -> None:
     fact = fact.strip()
     if not fact:
         return
@@ -77,7 +103,7 @@ def _add_fact(fact: str) -> None:
     memory["facts"] = facts[-MAX_FACTS:]
 
 
-def _add_example(example: str) -> None:
+def _add_example(memory: dict[str, Any], example: str) -> None:
     example = example.strip()
     if not example:
         return
@@ -156,24 +182,26 @@ def _extract_facts_from_text(text: str) -> list[str]:
 
 
 def observe_turn(session_id: str, user_message: str, assistant_reply: str, agent: str | None = None) -> None:
+    memory = _get_memory(session_id)
     memory["updated_at"] = session_id
 
     extracted_facts = _extract_facts_from_text(user_message)
     for fact in extracted_facts:
-        _add_fact(fact)
+        _add_fact(memory, fact)
 
     if extracted_facts:
         memory["summary"] = "; ".join(str(item) for item in memory.get("facts", [])[-8:])
 
     if agent:
-        _add_example(f"[{agent}] {user_message} -> {assistant_reply}")
+        _add_example(memory, f"[{agent}] {user_message} -> {assistant_reply}")
     else:
-        _add_example(f"{user_message} -> {assistant_reply}")
+        _add_example(memory, f"{user_message} -> {assistant_reply}")
 
-    save_memory()
+    save_memory(session_id)
 
 
-def get_memory_context(limit_facts: int = 12, limit_examples: int = 6) -> str:
+def get_memory_context(session_id: str | None = None, limit_facts: int = 12, limit_examples: int = 6) -> str:
+    memory = _get_memory(session_id)
     facts = memory.get("facts", [])[-limit_facts:]
     examples = memory.get("examples", [])[-limit_examples:]
 
