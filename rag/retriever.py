@@ -14,7 +14,7 @@ from __future__ import annotations
 import numpy as np
 import os
 import sqlite3
-from sentence_transformers import SentenceTransformer
+from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 from sklearn.metrics.pairwise import cosine_similarity
 
 from rag.subject_utils import SUBJECT_ALIASES, expand_query_text, subject_key
@@ -26,7 +26,7 @@ MODEL_NAME = "all-MiniLM-L6-v2"
 class MentorRetriever:
     def __init__(self, csv_path: str = "data/pairings.csv"):
         print("Loading embedding model (first run downloads ~90MB)...")
-        self.model = SentenceTransformer(MODEL_NAME)
+        self.model = DefaultEmbeddingFunction()
         # Try to load mentors from the SQLite DB (only available mentors)
         self.mentors = self._load_mentors_from_db() or self._load_mentors_from_csv(csv_path)
         self.index = self._build_index()
@@ -102,7 +102,8 @@ class MentorRetriever:
         if not self.mentors:
             return np.empty((0, 0))
         texts = [m['profile_text'] for m in self.mentors]
-        return self.model.encode(texts, show_progress_bar=False)
+        return np.array(self.model(texts))
+
 
     def retrieve(self, query_text: str, mentee_grade: int | None = None, top_k: int = 3) -> list[dict]:
         if not self.mentors:
@@ -112,7 +113,8 @@ class MentorRetriever:
         if mentee_grade is not None:
             query = f"{query}\nThe mentee is in grade {mentee_grade}."
 
-        query_vec = self.model.encode([query], show_progress_bar=False)
+        query_vec = np.array(self.model([query]))
+
         similarities = cosine_similarity(query_vec, self.index)[0]
         top_indices = similarities.argsort()[::-1][:top_k]
         results = []

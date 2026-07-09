@@ -17,7 +17,7 @@ import requests
 from api.services import book_pairing_in_db, get_mentor_slots, list_available_mentors, match_mentors
 from api.memory_store import get_memory_context, clear_session_memory
 from api.email_service import send_booking_confirmation
-from api.llm_provider import call_cerebras
+from api.llm_provider import call_cerebras, get_llm_config
 from rag.subject_utils import subject_key
 
 
@@ -616,8 +616,8 @@ def _score_general_knowledge(message: str, text: str) -> int:
 
 
 def _llm_api_key() -> str:
-    _load_dotenv_file()
-    return os.getenv("CEREBRAS_API_KEY", CEREBRAS_API_KEY).strip()
+    api_key, _, _ = get_llm_config()
+    return api_key.strip()
 
 
 def _format_slot_list(slots: list[dict]) -> str:

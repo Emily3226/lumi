@@ -93,8 +93,8 @@ def _get_embedding_function():
     global _embed_fn
     if _embed_fn is None:
         try:
-            from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
-            _embed_fn = SentenceTransformerEmbeddingFunction(model_name="all-MiniLM-L6-v2")
+            from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+            _embed_fn = DefaultEmbeddingFunction()
         except Exception:
             _embed_fn = None
     return _embed_fn

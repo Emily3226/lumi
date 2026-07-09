@@ -1,13 +1,88 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 
+def _load_dotenv_file() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    env_paths = [repo_root / ".env", repo_root / ".venv" / ".env"]
+
+    for env_path in env_paths:
+        if not env_path.exists():
+            continue
+
+        try:
+            lines = env_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
+            continue
+
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):].strip()
+
+            if "=" not in line:
+                continue
+
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if not key:
+                continue
+
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+                value = value[1:-1]
+
+            os.environ[key] = value
+
+
+def _windows_env_fallback(name: str) -> str:
+    if os.name != "nt":
+        return ""
+
+    try:
+        import winreg
+    except Exception:
+        return ""
+
+    registry_paths = [
+        (winreg.HKEY_CURRENT_USER, r"Environment"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"),
+    ]
+
+    for root, subkey in registry_paths:
+        try:
+            with winreg.OpenKey(root, subkey) as handle:
+                value, _ = winreg.QueryValueEx(handle, name)
+                if isinstance(value, str):
+                    return value.strip()
+        except Exception:
+            continue
+
+    return ""
+
+
+def _resolve_env(name: str, default: str = "") -> str:
+    _load_dotenv_file()
+    value = os.getenv(name, "").strip()
+    if value:
+        return value
+
+    value = _windows_env_fallback(name)
+    if value:
+        return value
+
+    return default
+
+
 def get_llm_config() -> tuple[str, str, str]:
-    api_key = os.getenv("CEREBRAS_API_KEY", "").strip()
-    model = os.getenv("CEREBRAS_MODEL", "llama3.1-8b").strip() or "llama3.1-8b"
-    base_url = os.getenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1").strip() or "https://api.cerebras.ai/v1"
+    api_key = _resolve_env("CEREBRAS_API_KEY")
+    model = _resolve_env("CEREBRAS_MODEL", "llama3.1-8b") or "llama3.1-8b"
+    base_url = _resolve_env("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1") or "https://api.cerebras.ai/v1"
     return api_key, model, base_url
 
 

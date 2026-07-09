@@ -15,12 +15,27 @@ from __future__ import annotations
 
 import os
 import sys
+import site
 from pathlib import Path
+
+
+def _bootstrap_local_venv() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    venv_site_packages = repo_root / ".venv" / "Lib" / "site-packages"
+    if not venv_site_packages.exists():
+        return
+
+    if sys.prefix != sys.base_prefix:
+        return
+
+    site.addsitedir(str(venv_site_packages))
+
+
+_bootstrap_local_venv()
+
 from fastapi.responses import RedirectResponse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
-
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
