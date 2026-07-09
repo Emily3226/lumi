@@ -41,6 +41,7 @@ class ProblemSetResult:
     problems: list[dict]
     pdf_url: str | None = None
     label: str | None = None
+    solutions_url: str | None = None
 
 
 def is_problem_set_request(text: str) -> bool:
@@ -208,6 +209,40 @@ def _add_problem_page(pdf: fitz.Document, problem: dict, scale: float = 2.0) -> 
     page.insert_image(rect, stream=png)
 
 
+def _add_solution_page(pdf: fitz.Document, problem: dict, scale: float = 2.0) -> None:
+    """Insert the official solution page for `problem` into `pdf` if available."""
+    contest = problem.get("contest", "Contest")
+    year = int(problem.get("year", 0) or 0)
+    number = int(problem.get("problem_number", 0) or 0)
+    sol_pdf_path = problem.get("solution_pdf_path", "") or problem.get("pdf_path", "")
+
+    if not sol_pdf_path:
+        raise ValueError("No solution PDF path for problem")
+
+    doc = _get_doc(sol_pdf_path)
+    page_idx = max(0, int(problem.get("solution_page_number", problem.get("page_number", 1)) or 1) - 1)
+    page_idx = min(page_idx, len(doc) - 1)
+    pix = doc[page_idx].get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+    png = pix.tobytes("png")
+
+    pix = fitz.Pixmap(png)
+    a4_w, a4_h = 595.0, 842.0
+    margin = 30.0
+    top_reserved = 56.0
+    max_w = a4_w - (margin * 2)
+    max_h = a4_h - margin - top_reserved
+
+    ratio = min(max_w / pix.width, max_h / pix.height)
+    draw_w = pix.width * ratio
+    draw_h = pix.height * ratio
+
+    page = pdf.new_page(width=a4_w, height=a4_h)
+    title = f"{contest} {year} - Solution {number}"
+    page.insert_text((margin, 30), title, fontsize=13)
+    rect = fitz.Rect(margin, top_reserved, margin + draw_w, top_reserved + draw_h)
+    page.insert_image(rect, stream=png)
+
+
 def _output_dir() -> Path:
     root = Path(__file__).resolve().parent.parent
     out = root / "frontend" / "generated"
@@ -275,6 +310,32 @@ def build_problem_set_from_text(text: str) -> ProblemSetResult:
         year_span = f"; years {used_years[0]}-{used_years[-1]}"
 
     label = f"{written}-problem set ({', '.join(contests)}{year_span})"
+    solutions_url = None
+    # Attempt to build a solutions PDF if solution pages are available for selected problems
+    try:
+        sol_pdf = fitz.open()
+        sol_written = 0
+        for p in rendered:
+            try:
+                if p.get("solution_pdf_path"):
+                    _add_solution_page(sol_pdf, p)
+                    sol_written += 1
+            except Exception:
+                continue
+        if sol_written > 0:
+            sol_filename = f"solutions_set_{safe_contests}_{stamp}.pdf"
+            sol_out = _output_dir() / sol_filename
+            sol_pdf.save(str(sol_out), deflate=True)
+            solutions_url = f"/frontend/generated/{sol_filename}"
+    except Exception:
+        # Ignore solution-generation failures — we still have the problems PDF
+        solutions_url = None
+    finally:
+        try:
+            sol_pdf.close()
+        except Exception:
+            pass
+
     return ProblemSetResult(
         ok=True,
         reply=(
@@ -284,4 +345,5 @@ def build_problem_set_from_text(text: str) -> ProblemSetResult:
         problems=rendered,
         pdf_url=f"/frontend/generated/{filename}",
         label=label,
+        solutions_url=solutions_url,
     )
