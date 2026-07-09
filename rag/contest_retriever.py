@@ -90,11 +90,8 @@ def _normalize_topics(doc: str, raw_topics: list[str]) -> list[str]:
 
 
 def _get_embedding_function():
-    global _embed_fn
-    if _embed_fn is None:
-        from rag.embeddings import get_embedding_function
-        _embed_fn = get_embedding_function()
-    return _embed_fn
+    from rag.embeddings import get_embedding_function
+    return get_embedding_function()
 
 
 def _get_collection():
