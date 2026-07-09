@@ -30,6 +30,7 @@ except Exception:
     certifi_win32 = None
 
 from api.llm_provider import call_cerebras
+from api.agents import _rewrite_user_message
 from api.problem_set_service import build_problem_set_from_text, is_problem_set_request
 from rag.contest_retriever import (
     collection_count,
@@ -834,6 +835,15 @@ def _build_contest_fact_reply(contest: str, n: str) -> str:
 def _norm(text: str) -> str:
     return " ".join(text.lower().strip().split())
 
+
+def is_negative_contest_request(text: str) -> bool:
+    n = _norm(text)
+    return bool(
+        re.search(r"\b(don'?t|do not|dont|no|not)\b.*\b(contest|contests|contest help|contest problem|contest problems|practice contest|math contest)\b", n)
+        or re.search(r"\b(i\s*do\s*not\s*want|i\s*don't\s*want|i\s*dont\s*want)\b.*\b(contest|contests|practice|problem|problems|help)\b", n)
+        or re.search(r"\b(no|not)\b.*\b(contest help|contest problem|contest problems|contest practice)\b", n)
+    )
+
 def _get_current_year() -> int:
     from datetime import datetime
     return datetime.now().year
@@ -922,6 +932,9 @@ def _extract_count(text: str) -> int:
 
 def detect_intent(text: str, session: dict) -> str:
     n = _norm(text)
+
+    if is_negative_contest_request(n):
+        return "switch_general"
 
     if is_problem_set_request(n):
         return "problem_set"
@@ -1534,7 +1547,7 @@ def handle_problem_set(text: str, session: dict) -> ContestResult:
         active_agent="contest",
         problem_set_url=result.pdf_url,
         problem_set_label=result.label,
-        solutions_url=result.solutions_url,
+        solutions_url=getattr(result, "solutions_url", None),
     )
 
 
@@ -1546,7 +1559,21 @@ class ContestAgent:
         if session is None:
             session = {}
 
+        rewrite = _rewrite_user_message(message, session, forced_agent="contest")
+        session["last_contest_prompt"] = rewrite.formatted_prompt
+        message = rewrite.cleaned_message
+        prompt_message = rewrite.formatted_prompt
+
         n = _norm(message)
+        if is_negative_contest_request(n):
+            session["active_agent"] = "general"
+            session["state"] = "idle"
+            return ContestResult(
+                reply="Switched back to the General agent. Tell me what you need instead.",
+                intent="switch_general",
+                active_agent="general",
+            )
+
         if any(w in n for w in _SWITCH_WORDS):
             return ContestResult(
                 reply="Switched back to the General agent. Ask me a mentor or booking question next.",
@@ -1568,7 +1595,7 @@ class ContestAgent:
                 return _unavailable_reply()
             # Still answer general/info questions even without DB
             history = _build_history(session)
-            reply = _grok(history + [{"role": "user", "content": message}], max_tokens=800)
+            reply = _grok(history + [{"role": "user", "content": prompt_message}], max_tokens=800)
             return ContestResult(reply=reply, intent=intent)
 
         if intent == "list_contests":

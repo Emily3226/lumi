@@ -98,6 +98,13 @@ class AgentResult:
     active_agent: str | None = None
 
 
+@dataclass
+class PromptRewriteResult:
+    target_agent: str
+    cleaned_message: str
+    formatted_prompt: str
+
+
 def _normalize(text: str) -> str:
     return " ".join(text.lower().strip().split())
 
@@ -199,6 +206,15 @@ def is_match_request(text: str) -> bool:
     )
 
 
+def is_negative_match_request(text: str) -> bool:
+    t = _normalize(text)
+    return bool(
+        re.search(r"\b(don'?t|do not|dont|no|not)\b.*\b(mentor|mentors|match|tutor|tutors|pair|pairing)\b", t)
+        or re.search(r"\b(no|not)\b.*\b(match|matching)\b", t)
+        or re.search(r"\b(i\s*do\s*not\s*want|i\s*don't\s*want|i\s*dont\s*want)\b.*\b(mentor|match|tutor|pair)\b", t)
+    )
+
+
 def is_contest_request(text: str) -> bool:
     t = _normalize(text)
     return bool(re.search(r"\bcontest(s)?\b|\bolympiad\b|\bcompetition\b|\bAMC\b|\bAIME\b|contest math|contest problems|practice contest", t))
@@ -224,6 +240,138 @@ def _is_transformation_request(text: str) -> bool:
 
 def _compact_text(text: str) -> str:
     return " ".join(sorted(_token_set(text)))
+
+
+def _extract_llm_text(data: dict[str, Any]) -> str | None:
+    if not isinstance(data, dict):
+        return None
+
+    choices = data.get("choices")
+    if isinstance(choices, list) and choices:
+        first_choice = choices[0]
+        if isinstance(first_choice, dict):
+            choice_message = first_choice.get("message")
+            if isinstance(choice_message, dict):
+                content = choice_message.get("content")
+                if isinstance(content, str) and content:
+                    return content.strip()
+                if isinstance(content, list):
+                    text_parts = []
+                    for part in content:
+                        if isinstance(part, dict):
+                            text = part.get("text") or part.get("content")
+                            if isinstance(text, str) and text:
+                                text_parts.append(text)
+                    if text_parts:
+                        return "".join(text_parts).strip()
+
+    candidates = data.get("candidates")
+    if isinstance(candidates, list) and candidates:
+        first_candidate = candidates[0]
+        if isinstance(first_candidate, dict):
+            candidate_text = first_candidate.get("content") or first_candidate.get("output") or first_candidate.get("text")
+            if isinstance(candidate_text, str) and candidate_text:
+                return candidate_text.strip()
+            if isinstance(candidate_text, dict):
+                inner_text = candidate_text.get("text") or candidate_text.get("output")
+                if isinstance(inner_text, str) and inner_text:
+                    return inner_text.strip()
+
+    return None
+
+
+def _strip_code_fences(text: str) -> str:
+    trimmed = text.strip()
+    if trimmed.startswith("```"):
+        trimmed = re.sub(r"^```(?:json)?\s*", "", trimmed, flags=re.I)
+        trimmed = re.sub(r"\s*```$", "", trimmed)
+    return trimmed.strip()
+
+
+def _rewrite_user_message(message: str, session: dict[str, Any], forced_agent: str | None = None, intent: str | None = None) -> PromptRewriteResult:
+    clean_message = message.strip()
+    base_target = forced_agent or session.get("active_agent") or "general"
+    fallback_prompt = (
+        f"Internal agent request.\n"
+        f"Target agent: {base_target}\n"
+        f"User request: {clean_message}\n"
+        f"Use the agent's normal rules to handle it."
+    )
+
+    api_key = _llm_api_key()
+    if not api_key:
+        return PromptRewriteResult(
+            target_agent=base_target if base_target in {"general", "match", "contest"} else "unknown",
+            cleaned_message=clean_message,
+            formatted_prompt=fallback_prompt,
+        )
+
+    session_summary: list[str] = []
+    for key in ("active_agent", "state", "grade", "subject", "name", "query_text"):
+        value = session.get(key)
+        if value not in (None, "", [], {}):
+            session_summary.append(f"{key}: {value}")
+
+    prompt = (
+        "You rewrite raw user messages into clean internal prompts for Lumi's agents. "
+        "Return JSON only with keys: target_agent, cleaned_message, formatted_prompt. "
+        "target_agent must be one of general, match, contest, or unknown. "
+        "If the user explicitly rejects mentors, matches, pairings, or tutoring, set target_agent to general. "
+        "Do not answer the user. Preserve names, grades, contest names, dates, and constraints. "
+        "Keep the cleaned message concise and explicit."
+    )
+    request = {
+        "message": clean_message,
+        "forced_agent": forced_agent,
+        "intent_hint": intent,
+        "session": session_summary,
+    }
+
+    try:
+        data = call_cerebras(
+            [
+                {"role": "system", "content": prompt},
+                {"role": "user", "content": json.dumps(request, ensure_ascii=False)},
+            ],
+            max_tokens=250,
+            temperature=0.0,
+        )
+    except Exception:
+        return PromptRewriteResult(
+            target_agent=base_target if base_target in {"general", "match", "contest"} else "unknown",
+            cleaned_message=clean_message,
+            formatted_prompt=fallback_prompt,
+        )
+
+    content = _extract_llm_text(data)
+    if not content:
+        return PromptRewriteResult(
+            target_agent=base_target if base_target in {"general", "match", "contest"} else "unknown",
+            cleaned_message=clean_message,
+            formatted_prompt=fallback_prompt,
+        )
+
+    try:
+        payload = json.loads(_strip_code_fences(content))
+    except json.JSONDecodeError:
+        return PromptRewriteResult(
+            target_agent=base_target if base_target in {"general", "match", "contest"} else "unknown",
+            cleaned_message=clean_message,
+            formatted_prompt=fallback_prompt,
+        )
+
+    target_agent = str(payload.get("target_agent") or base_target).strip().lower()
+    if target_agent not in {"general", "match", "contest", "unknown"}:
+        target_agent = "unknown"
+
+    cleaned_message = str(payload.get("cleaned_message") or clean_message).strip() or clean_message
+    formatted_prompt = str(payload.get("formatted_prompt") or fallback_prompt).strip() or fallback_prompt
+
+    return PromptRewriteResult(
+        target_agent=target_agent,
+        cleaned_message=cleaned_message,
+        formatted_prompt=formatted_prompt,
+    )
 
 
 def _contains_any(tokens: set[str], words: set[str]) -> bool:
@@ -491,16 +639,30 @@ class MentorTaskAgents:
         )
 
     def run(self, session_id: str, message: str, session: dict[str, Any], forced_agent: str | None = None) -> AgentResult:
-        if forced_agent in {"general", "match", "contest"} and not is_agent_switch_request(message):
-            self._set_active_agent(session, forced_agent)
-        # Natural-language auto-switch: set active agent based on intent phrases
-        if not is_agent_switch_request(message):
-            if is_match_request(message):
-                self._set_active_agent(session, "match")
-            elif is_contest_request(message):
-                self._set_active_agent(session, "contest")
         intent = self._intent_for(message, session, forced_agent)
-        payload = {"session_id": session_id, "message": message, "session": session, "intent": intent}
+        rewrite = _rewrite_user_message(message, session, forced_agent, intent)
+        session["last_agent_prompt"] = rewrite.formatted_prompt
+
+        if forced_agent in {"general", "match", "contest"} and not is_agent_switch_request(message) and not is_negative_match_request(message):
+            self._set_active_agent(session, forced_agent)
+
+        # Natural-language auto-switch: set active agent based on the rewritten intent when it is explicit.
+        if not is_agent_switch_request(message) and not is_negative_match_request(message):
+            if rewrite.target_agent == "match" or (rewrite.target_agent == "unknown" and is_match_request(rewrite.cleaned_message)):
+                self._set_active_agent(session, "match")
+            elif rewrite.target_agent == "contest" or (rewrite.target_agent == "unknown" and is_contest_request(rewrite.cleaned_message)):
+                self._set_active_agent(session, "contest")
+            elif rewrite.target_agent == "general":
+                self._set_active_agent(session, "general")
+
+        payload = {
+            "session_id": session_id,
+            "message": message,
+            "prompt_message": rewrite.formatted_prompt,
+            "cleaned_message": rewrite.cleaned_message,
+            "session": session,
+            "intent": intent,
+        }
         return self.router.invoke(payload)
 
     def _set_active_agent(self, session: dict[str, Any], agent: str) -> None:
@@ -540,6 +702,8 @@ class MentorTaskAgents:
             return "general"
         if is_contest_request(message):
             return "general"
+        if is_negative_match_request(message):
+            return "general"
         # If user asks "how do I book" or similar, treat it as a general question, not an actionable booking command
         if re.search(r"\bhow\b", message, re.I) and re.search(r"\bbook\b", message, re.I):
             return "general"
@@ -564,6 +728,7 @@ class MentorTaskAgents:
     def _general_agent(self, context: dict[str, Any]) -> AgentResult:
         message = context["message"]
         session = context["session"]
+        prompt_message = context.get("prompt_message") or message
 
         if is_agent_switch_request(message):
             target = _target_agent(message)
@@ -624,7 +789,7 @@ class MentorTaskAgents:
             return AgentResult(reply="\n".join(lines), state=session.get("state", "idle"), booking_state="mentor_list", active_agent=session.get("active_agent", "general"))
 
         # Natural-language intent switches: if the user asks for a mentor or contest help, switch modes
-        if is_match_request(message):
+        if not is_negative_match_request(message) and is_match_request(message):
             session["active_agent"] = "match"
             session["pending_match_step"] = "grade"
             session["state"] = "awaiting_match_details"
@@ -635,7 +800,7 @@ class MentorTaskAgents:
                 booking_state="needs_grade_and_subject",
             )
 
-        if is_contest_request(message):
+        if not is_negative_match_request(message) and is_contest_request(message):
             session["active_agent"] = "contest"
             session["state"] = "idle"
             return AgentResult(
@@ -646,7 +811,7 @@ class MentorTaskAgents:
                 active_agent="contest",
             )
 
-        general_answer = self._answer_general_question(message, session)
+        general_answer = self._answer_general_question(message, session, prompt_message)
         if general_answer:
             return AgentResult(
                 reply=general_answer,
@@ -662,7 +827,7 @@ class MentorTaskAgents:
             active_agent=session.get("active_agent", "general"),
         )
 
-    def _answer_general_question(self, message: str, session: dict[str, Any]) -> str | None:
+    def _answer_general_question(self, message: str, session: dict[str, Any], prompt_message: str | None = None) -> str | None:
         # Allow explicit user requests to switch agents (e.g., "switch to match agent")
         if is_agent_switch_request(message):
             target = _target_agent(message)
@@ -680,7 +845,7 @@ class MentorTaskAgents:
         # If the user requests a transformation (summarize/explain/translate/etc.),
         # bypass the KB and send directly to the configured LLM for best-effort processing.
         if _is_transformation_request(message):
-            chat_answer = self._answer_from_free_chat(message, session, force_date=False)
+            chat_answer = self._answer_from_free_chat(prompt_message or message, session, force_date=False)
             if chat_answer:
                 return chat_answer
 
@@ -688,7 +853,7 @@ class MentorTaskAgents:
         if file_answer:
             return file_answer
 
-        chat_answer = self._answer_from_free_chat(message, session)
+        chat_answer = self._answer_from_free_chat(prompt_message or message, session)
         if chat_answer:
             return chat_answer
 
@@ -761,7 +926,7 @@ class MentorTaskAgents:
 
         try:
             data = call_cerebras(
-                [{"role": "system", "content": prompt}],
+                messages,
                 max_tokens=1024,
                 temperature=0.6,
             )
@@ -772,55 +937,7 @@ class MentorTaskAgents:
             logger.warning("Cerebras fallback returned invalid JSON: %s", exc)
             return None
 
-        if not isinstance(data, dict):
-            return None
-
-        choices = data.get("choices")
-        if isinstance(choices, list) and choices:
-            first_choice = choices[0]
-            if isinstance(first_choice, dict):
-                choice_message = first_choice.get("message")
-                if isinstance(choice_message, dict):
-                    content = choice_message.get("content")
-                    if isinstance(content, str) and content:
-                        return content.strip()
-                    if isinstance(content, list):
-                        text_parts = []
-                        for part in content:
-                            if isinstance(part, dict):
-                                text = part.get("text") or part.get("content")
-                                if isinstance(text, str) and text:
-                                    text_parts.append(text)
-                        if text_parts:
-                            return "".join(text_parts).strip()
-        return None
-
-        if not isinstance(data, dict):
-            return None
-
-        choices = data.get("choices")
-        if isinstance(choices, list) and choices:
-            first_choice = choices[0]
-            if isinstance(first_choice, dict):
-                choice_message = first_choice.get("message")
-                if isinstance(choice_message, dict):
-                    content = choice_message.get("content")
-                    if content:
-                        return str(content).strip()
-
-        candidates = data.get("candidates")
-        if isinstance(candidates, list) and candidates:
-            first_candidate = candidates[0]
-            if isinstance(first_candidate, dict):
-                candidate_text = first_candidate.get("content") or first_candidate.get("output") or first_candidate.get("text")
-                if isinstance(candidate_text, str) and candidate_text:
-                    return candidate_text.strip()
-                if isinstance(candidate_text, dict):
-                    inner_text = candidate_text.get("text") or candidate_text.get("output")
-                    if isinstance(inner_text, str) and inner_text:
-                        return inner_text.strip()
-
-        return None
+        return _extract_llm_text(data)
 
     def _build_booking_summary(self, session: dict[str, Any], mentor: dict[str, Any]) -> str:
         mentee_name = session.get("name") or "Mentee"
@@ -840,10 +957,20 @@ class MentorTaskAgents:
         )
 
     def _search_agent(self, context: dict[str, Any]) -> AgentResult:
-        message = context["message"].strip()
+        message = (context.get("cleaned_message") or context["message"]).strip()
         session = context["session"]
+        prompt_message = context.get("prompt_message") or message
         matches = session.get("matches", [])
         choice = extract_choice(message)
+
+        if is_negative_match_request(message):
+            return AgentResult(
+                reply="Okay, I won't switch you to the Match agent. Tell me what you want instead.",
+                state="idle",
+                matches=[],
+                booking_state="general",
+                active_agent="general",
+            )
 
         if is_agent_switch_request(message):
             target = _target_agent(message)
