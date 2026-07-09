@@ -13,6 +13,7 @@ password.
 
 from __future__ import annotations
 
+import socket
 import logging
 import os
 import smtplib
@@ -124,12 +125,18 @@ def send_booking_confirmation(
     message.set_content(body)
 
     recipients = [mentee_email, AUXILIUM_SUPPORT_EMAIL]
-
+    
     try:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT) as smtp:
+    # Force IPv4 — Render containers often lack outbound IPv6 routing,
+    # and smtplib tries AAAA records first if DNS returns one, causing
+    # "Network is unreachable" even though IPv4 works fine.
+        addr_info = socket.getaddrinfo(SMTP_HOST, SMTP_PORT, socket.AF_INET, socket.SOCK_STREAM)
+        ipv4_host = addr_info[0][4][0]
+
+        with smtplib.SMTP_SSL(ipv4_host, SMTP_PORT, timeout=10) as smtp:
             smtp.login(gmail_user, gmail_password)
             smtp.send_message(message, to_addrs=recipients)
         return True
-    except Exception as exc:  # pragma: no cover - network/SMTP errors
+    except Exception as exc:
         logger.warning("Failed to send booking confirmation email: %s", exc)
         return False
