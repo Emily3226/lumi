@@ -216,7 +216,7 @@
       // (e.g. "https://lumi-api.onrender.com"). Falls back to localhost for
       // local development so `uvicorn api.main:app --reload` still works.
       // ------------------------------------------------------------------
-      const API = window.LUMI_API_BASE || 'http://localhost:8000';
+      const API = window.LUMI_API_BASE || (location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? 'http://localhost:8000' : '');
       const SESSION_KEY = 'lumi_session_id';
       const SESSION = localStorage.getItem(SESSION_KEY) || ('session_' + Math.random().toString(36).slice(2, 9));
       localStorage.setItem(SESSION_KEY, SESSION);
