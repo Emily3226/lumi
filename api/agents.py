@@ -18,7 +18,6 @@ from api.services import book_pairing_in_db, get_mentor_slots, list_available_me
 from api.memory_store import get_memory_context, clear_session_memory
 from api.email_service import send_booking_confirmation
 from api.llm_provider import call_cerebras, get_llm_config
-from api.env import load_dotenv_once
 from rag.subject_utils import subject_key
 
 
@@ -27,7 +26,44 @@ MENTOR_LIST_LIMIT = 3
 logger = logging.getLogger(__name__)
 
 
-load_dotenv_once()
+def _load_dotenv_file() -> None:
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.exists():
+        return
+
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#") or line.startswith("export "):
+            if line.startswith("export "):
+                line = line[len("export "):].strip()
+            else:
+                continue
+
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+
+        current_value = os.environ.get(key, "")
+        if current_value.strip():
+            continue
+
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+            value = value[1:-1]
+
+        os.environ[key] = value
+
+
+_load_dotenv_file()
 
 CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "").strip()
 CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "llama3.1-8b").strip() or "llama3.1-8b"
@@ -1106,7 +1142,24 @@ class MentorTaskAgents:
             subject = session.get("subject") or mentor["subject"]
             grade = int(session.get("grade") or 0)
 
-            self._save_booking(session, mentor, mentee_name, mentee_email)
+            try:
+                self._save_booking(session, mentor, mentee_name, mentee_email)
+            except ValueError as e:
+                # Someone else booked this mentor/slot between the match being
+                # shown and the user confirming it. Don't 500 — let them pick again.
+                self._reset_booking_state(session)
+                session["active_agent"] = "match"
+                return AgentResult(
+                    reply=(
+                        f"Sorry — {mentor['name']} just became unavailable "
+                        f"({e}). Let's find you another match. What grade is "
+                        "the mentee in?"
+                    ),
+                    state="awaiting_match_details",
+                    matches=[],
+                    booking_state="needs_grade",
+                    active_agent="match",
+                )
 
             email_sent = False
             try:
