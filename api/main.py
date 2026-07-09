@@ -18,10 +18,6 @@ import sys
 import site
 from pathlib import Path
 
-@app.on_event("startup")
-async def _warm_retriever():
-    from api.services import get_retriever
-    get_retriever()
 
 def _bootstrap_local_venv() -> None:
     repo_root = Path(__file__).resolve().parents[1]
@@ -40,10 +36,6 @@ _bootstrap_local_venv()
 from fastapi.responses import RedirectResponse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
-from api.env import load_dotenv_once
-
-load_dotenv_once()
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -75,6 +67,15 @@ app.add_middleware(
 )
 
 init_db()
+
+# Build the mentor-matching retriever (loads embedding model + encodes all
+# mentor profiles) once now, at boot, instead of lazily on the first user
+# chat message. See get_retriever() in api/services.py.
+try:
+    from api.services import get_retriever
+    get_retriever()
+except Exception as e:
+    print(f"[STARTUP] Mentor retriever warm-up skipped due to error: {e}")
 
 # Pre-render all known problem/solution images at startup so the first real
 # user request for any problem is served from cache instead of paying the
