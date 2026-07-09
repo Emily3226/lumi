@@ -844,6 +844,11 @@ def is_negative_contest_request(text: str) -> bool:
         or re.search(r"\b(no|not)\b.*\b(contest help|contest problem|contest problems|contest practice)\b", n)
     )
 
+
+def is_match_request(text: str) -> bool:
+    n = _norm(text)
+    return bool(re.search(r"\b(mentor|mentors|tutor|tutors|match|matching)\b", n))
+
 def _get_current_year() -> int:
     from datetime import datetime
     return datetime.now().year
@@ -1565,6 +1570,16 @@ class ContestAgent:
         prompt_message = rewrite.formatted_prompt
 
         n = _norm(message)
+        if is_match_request(n):
+            session["active_agent"] = "match"
+            session["state"] = "awaiting_match_details"
+            session["pending_match_step"] = "grade"
+            return ContestResult(
+                reply="Switched to the Match agent. What grade is the mentee in?",
+                intent="switch_match",
+                active_agent="match",
+            )
+
         if is_negative_contest_request(n):
             session["active_agent"] = "general"
             session["state"] = "idle"
