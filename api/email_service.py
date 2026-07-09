@@ -28,37 +28,37 @@ SMTP_PORT = 465
 
 def _load_dotenv_file() -> None:
     """Best-effort .env loader so this module works standalone too."""
-    env_path = Path(__file__).resolve().parents[1] / ".env"
-    if not env_path.exists():
-        return
+    repo_root = Path(__file__).resolve().parents[1]
+    env_paths = [repo_root / ".env", repo_root / ".venv" / ".env"]
 
-    try:
-        lines = env_path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return
-
-    for raw_line in lines:
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line[len("export "):].strip()
-        if "=" not in line:
+    for env_path in env_paths:
+        if not env_path.exists():
             continue
 
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip()
-        if not key:
+        try:
+            lines = env_path.read_text(encoding="utf-8").splitlines()
+        except OSError:
             continue
 
-        if os.environ.get(key, "").strip():
-            continue
+        for raw_line in lines:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):].strip()
+            if "=" not in line:
+                continue
 
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-            value = value[1:-1]
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if not key:
+                continue
 
-        os.environ[key] = value
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
+                value = value[1:-1]
+
+            os.environ[key] = value
 
 
 _load_dotenv_file()
