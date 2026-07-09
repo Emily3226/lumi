@@ -206,6 +206,7 @@ def _add_problem_page(pdf: fitz.Document, problem: dict, scale: float = 2.0) -> 
     ratio = min(max_w / pix.width, max_h / pix.height)
     draw_w = pix.width * ratio
     draw_h = pix.height * ratio
+    pix = None  # only needed for width/height above - release the decoded buffer now
 
     page = pdf.new_page(width=a4_w, height=a4_h)
     title = f"{contest} {year} - Problem {number}"
@@ -227,8 +228,9 @@ def _add_solution_page(pdf: fitz.Document, problem: dict, scale: float = 2.0) ->
     doc = _get_doc(sol_pdf_path)
     page_idx = max(0, int(problem.get("solution_page_number", problem.get("page_number", 1)) or 1) - 1)
     page_idx = min(page_idx, len(doc) - 1)
-    pix = doc[page_idx].get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
-    png = pix.tobytes("png")
+    raw_pix = doc[page_idx].get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+    png = raw_pix.tobytes("png")
+    raw_pix = None  # release the raw page buffer as soon as we have the PNG bytes
 
     pix = fitz.Pixmap(png)
     a4_w, a4_h = 595.0, 842.0
@@ -240,6 +242,7 @@ def _add_solution_page(pdf: fitz.Document, problem: dict, scale: float = 2.0) ->
     ratio = min(max_w / pix.width, max_h / pix.height)
     draw_w = pix.width * ratio
     draw_h = pix.height * ratio
+    pix = None  # only needed for width/height above - release the decoded buffer now
 
     page = pdf.new_page(width=a4_w, height=a4_h)
     title = f"{contest} {year} - Solution {number}"

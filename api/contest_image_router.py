@@ -91,9 +91,34 @@ def _get_labels(pdf_path: str, contest: str) -> dict[int, ProblemLocation]:
     return labels
 
 
-# ── Render cache ──────────────────────────────────────────────────────────────
+# ── Render cache (LRU, bounded) ─────────────────────────────────────────────
+# NOTE: previously this was an unbounded dict that kept every rendered PNG
+# (base64-encoded, at up to 4x scale) in memory for the life of the process.
+# That's what was causing out-of-memory crashes, especially when generating
+# problem sets which render many images in one go. Cap it like the doc cache.
 
+_RENDER_CACHE_SIZE = 150
 _render_cache: dict[tuple, dict] = {}
+_render_cache_order: list[tuple] = []
+
+
+def _render_cache_get(key: tuple) -> dict | None:
+    if key in _render_cache:
+        try:
+            _render_cache_order.remove(key)
+        except ValueError:
+            pass
+        _render_cache_order.append(key)
+        return _render_cache[key]
+    return None
+
+
+def _render_cache_set(key: tuple, value: dict) -> None:
+    while len(_render_cache) >= _RENDER_CACHE_SIZE:
+        oldest = _render_cache_order.pop(0)
+        _render_cache.pop(oldest, None)
+    _render_cache[key] = value
+    _render_cache_order.append(key)
 
 # ── Safety ────────────────────────────────────────────────────────────────────
 
@@ -317,8 +342,9 @@ def get_page_image(
         target = pdf_path
 
     render_key = (target, prob_num, contest, show_solution, scale)
-    if render_key in _render_cache:
-        return _render_cache[render_key]
+    cached = _render_cache_get(render_key)
+    if cached is not None:
+        return cached
 
     try:
         doc = _get_doc(target)
@@ -339,10 +365,8 @@ def get_page_image(
             "cropped": False,
             "page": fallback,
         }
-        _render_cache[render_key] = response
+        _render_cache_set(render_key, response)
         return response
-
-    # Find the next problem's label (used as the exclusive upper boundary)
     # Walk forward through sorted labels to find the immediate successor
     sorted_locs = sorted(labels.values(), key=lambda loc: (loc.page_index, loc.y))
     next_loc: ProblemLocation | None = None
@@ -365,7 +389,7 @@ def get_page_image(
         "cropped": True,
         "page": start_loc.page_index,
     }
-    _render_cache[render_key] = response
+    _render_cache_set(render_key, response)
     return response
 
 
@@ -438,7 +462,7 @@ def _prewarm_one(pdf_path: str, prob_num: int, contest: str, show_solution: bool
 
     scale = 2.0
     render_key = (target, prob_num, contest, show_solution, scale)
-    if render_key in _render_cache:
+    if _render_cache_get(render_key) is not None:
         return
 
     doc = _get_doc(target)
@@ -458,8 +482,8 @@ def _prewarm_one(pdf_path: str, prob_num: int, contest: str, show_solution: bool
     is_last = next_loc is None
 
     png = _render_crop(doc, start_loc, next_loc, scale, is_last, is_solution=show_solution)
-    _render_cache[render_key] = {
+    _render_cache_set(render_key, {
         "image_base64": base64.b64encode(png).decode(),
         "cropped": True,
         "page": start_loc.page_index,
-    }
+    })
