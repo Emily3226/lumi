@@ -19,13 +19,16 @@ from models.inference import trained_model_available
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
 DB_PATH = os.path.join(ROOT_DIR, "data", "lumi.db")
 
+_retriever: MentorRetriever | None = None
 
-retriever: MentorRetriever | None = None
+
 def get_retriever() -> MentorRetriever:
-     global _retriever
-     if _retriever is None:
-         _retriever = MentorRetriever()
-     return _retriever
+    global _retriever
+    if _retriever is None:
+        _retriever = MentorRetriever()
+    return _retriever
+
+
 MIN_MATCH_SCORE = 0.35
 MAX_ALLOWED_BELOW_GRADE = 1
 
