@@ -87,7 +87,7 @@ def get_llm_config() -> tuple[str, str, str]:
 
 
 def build_cerebras_payload(messages: list[dict[str, Any]], *, max_tokens: int = 1200, temperature: float = 0.2) -> dict[str, Any]:
-    api_key, model, _ = get_llm_config()
+    _, model, _ = get_llm_config()
     return {
         "model": model,
         "messages": [
@@ -100,6 +100,15 @@ def build_cerebras_payload(messages: list[dict[str, Any]], *, max_tokens: int = 
     }
 
 
+def _model_candidates(primary_model: str) -> list[str]:
+    candidates: list[str] = []
+    for model in [primary_model, "llama3.1-8b", "gpt-oss-120b"]:
+        model = model.strip()
+        if model and model not in candidates:
+            candidates.append(model)
+    return candidates
+
+
 def call_cerebras(messages: list[dict[str, Any]], *, max_tokens: int = 1200, temperature: float = 0.2) -> dict[str, Any]:
     import requests
 
@@ -107,15 +116,45 @@ def call_cerebras(messages: list[dict[str, Any]], *, max_tokens: int = 1200, tem
     if not api_key:
         raise ValueError("CEREBRAS_API_KEY is not set")
 
-    payload = build_cerebras_payload(messages, max_tokens=max_tokens, temperature=temperature)
-    response = requests.post(
-        f"{base_url.rstrip('/')}/chat/completions",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-        timeout=60,
-    )
-    response.raise_for_status()
-    return response.json()
+    last_error: Exception | None = None
+    for candidate_model in _model_candidates(model):
+        payload = {
+            "model": candidate_model,
+            "messages": [
+                {"role": str(item.get("role", "user")), "content": str(item.get("content", ""))}
+                for item in messages
+            ],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": False,
+        }
+
+        response = requests.post(
+            f"{base_url.rstrip('/')}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+            timeout=60,
+        )
+
+        if response.ok:
+            return response.json()
+
+        if response.status_code == 404:
+            last_error = ValueError(
+                f"Cerebras model '{candidate_model}' was not found or is unavailable on this account."
+            )
+            continue
+
+        try:
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            last_error = exc
+            break
+
+    if last_error is not None:
+        raise last_error
+
+    raise ValueError("Cerebras request failed")
