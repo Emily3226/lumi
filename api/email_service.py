@@ -140,6 +140,7 @@ def send_booking_confirmation(
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (compatible; LumiBackend/1.0)",
         },
         method="POST",
     )
