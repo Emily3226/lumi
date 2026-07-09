@@ -14,19 +14,21 @@ from rag.retriever import MentorRetriever
 from rag.langchain_matcher import rank_candidates_langchain
 from rag.subject_utils import expand_query_text, subject_key, subject_matches
 from models.inference import trained_model_available
-
+import threading
 
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
 
 _retriever: MentorRetriever | None = None
+_retriever_lock = threading.Lock()
 
 
 def get_retriever() -> MentorRetriever:
     global _retriever
     if _retriever is None:
-        _retriever = MentorRetriever()
+        with _retriever_lock:
+            if _retriever is None:  # re-check inside the lock
+                _retriever = MentorRetriever()
     return _retriever
-
 
 MIN_MATCH_SCORE = 0.35
 MAX_ALLOWED_BELOW_GRADE = 1

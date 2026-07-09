@@ -18,6 +18,10 @@ import sys
 import site
 from pathlib import Path
 
+@app.on_event("startup")
+async def _warm_retriever():
+    from api.services import get_retriever
+    get_retriever()
 
 def _bootstrap_local_venv() -> None:
     repo_root = Path(__file__).resolve().parents[1]

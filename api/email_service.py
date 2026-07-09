@@ -1,30 +1,38 @@
 """Email notifications for Auxilium mentor bookings.
 
 Sends a booking confirmation email to the mentee, CC'd to the Auxilium
-coordinators, using a Gmail account configured via environment variables:
+coordinators, via the Resend HTTP API (https://resend.com).
 
-    GMAIL_USER=auxilium.mentorship@gmail.com
-    GMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
+Why not Gmail SMTP: Render (like most PaaS free/starter tiers) blocks
+outbound SMTP ports (25/465/587) to prevent spam abuse. That connection
+fails with "Network is unreachable" regardless of IPv4/IPv6 — it's not a
+DNS issue, the port itself is closed. Resend sends over plain HTTPS (443),
+which is never blocked, so this avoids the problem entirely.
 
-`GMAIL_APP_PASSWORD` must be a Gmail "App Password" (Google Account ->
-Security -> 2-Step Verification -> App passwords), not the normal account
-password.
+Configure via environment variables:
+
+    RESEND_API_KEY=re_xxxxxxxxxxxx
+    RESEND_FROM_EMAIL=Auxilium Mentorship <onboarding@resend.dev>
+
+`RESEND_FROM_EMAIL` can use Resend's shared `onboarding@resend.dev` sender
+for testing with no setup, or your own address once you've verified a
+domain in the Resend dashboard.
 """
 
 from __future__ import annotations
 
-import socket
+import json
 import logging
 import os
-import smtplib
-from email.message import EmailMessage
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 AUXILIUM_SUPPORT_EMAIL = "ezhan322@gmail.com"
-SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = 465
+RESEND_API_URL = "https://api.resend.com/emails"
+DEFAULT_FROM_EMAIL = "Auxilium Mentorship <onboarding@resend.dev>"
 
 
 def _load_dotenv_file() -> None:
@@ -67,11 +75,11 @@ _load_dotenv_file()
 
 def _credentials() -> tuple[str, str] | None:
     _load_dotenv_file()
-    user = os.getenv("GMAIL_USER", "").strip()
-    password = os.getenv("GMAIL_APP_PASSWORD", "").strip()
-    if not user or not password:
+    api_key = os.getenv("RESEND_API_KEY", "").strip()
+    from_email = os.getenv("RESEND_FROM_EMAIL", DEFAULT_FROM_EMAIL).strip()
+    if not api_key:
         return None
-    return user, password
+    return api_key, from_email
 
 
 def send_booking_confirmation(
@@ -90,21 +98,16 @@ def send_booking_confirmation(
     creds = _credentials()
     if not creds:
         logger.warning(
-            "Booking confirmation email not sent: GMAIL_USER / GMAIL_APP_PASSWORD "
-            "are not configured in the .env file."
+            "Booking confirmation email not sent: RESEND_API_KEY is not "
+            "configured in the .env file / environment."
         )
         return False
 
-    gmail_user, gmail_password = creds
+    api_key, from_email = creds
 
     if not mentee_email or "@" not in mentee_email:
         logger.warning("Booking confirmation email not sent: invalid mentee email %r", mentee_email)
         return False
-
-    message = EmailMessage()
-    message["Subject"] = "Auxilium Mentorship - Booking Confirmation"
-    message["From"] = gmail_user
-    message["To"] = mentee_email
 
     slot_line = f"Weekly session: {slot_label}\n" if slot_label else ""
 
@@ -122,21 +125,35 @@ def send_booking_confirmation(
         f"If you have any questions, reach out to {AUXILIUM_SUPPORT_EMAIL}.\n\n"
         "- The Auxilium Mentorship Team"
     )
-    message.set_content(body)
 
-    recipients = [mentee_email, AUXILIUM_SUPPORT_EMAIL]
-    
+    payload = {
+        "from": from_email,
+        "to": [mentee_email],
+        "cc": [AUXILIUM_SUPPORT_EMAIL],
+        "subject": "Auxilium Mentorship - Booking Confirmation",
+        "text": body,
+    }
+
+    req = urllib.request.Request(
+        RESEND_API_URL,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+
     try:
-    # Force IPv4 — Render containers often lack outbound IPv6 routing,
-    # and smtplib tries AAAA records first if DNS returns one, causing
-    # "Network is unreachable" even though IPv4 works fine.
-        addr_info = socket.getaddrinfo(SMTP_HOST, SMTP_PORT, socket.AF_INET, socket.SOCK_STREAM)
-        ipv4_host = addr_info[0][4][0]
-
-        with smtplib.SMTP_SSL(ipv4_host, SMTP_PORT, timeout=10) as smtp:
-            smtp.login(gmail_user, gmail_password)
-            smtp.send_message(message, to_addrs=recipients)
-        return True
-    except Exception as exc:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if 200 <= resp.status < 300:
+                return True
+            logger.warning("Resend API returned unexpected status %s", resp.status)
+            return False
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        logger.warning("Failed to send booking confirmation email: %s - %s", exc, detail)
+        return False
+    except Exception as exc:  # pragma: no cover - network errors
         logger.warning("Failed to send booking confirmation email: %s", exc)
         return False

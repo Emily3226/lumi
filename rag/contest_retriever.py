@@ -2,7 +2,7 @@
 rag/contest_retriever.py
 
 ChromaDB-backed semantic retriever for Waterloo contest problems.
-Uses sentence-transformers for embeddings (all-MiniLM-L6-v2).
+Uses a local ONNX embedding model (all-MiniLM-L6-v2) via rag/embeddings.py.
 """
 
 from __future__ import annotations
@@ -15,7 +15,6 @@ COLLECTION_NAME = "waterloo_contests"
 
 _client = None
 _collection = None
-_embed_fn = None
 
 
 def _is_missing_collection_error(exc: Exception) -> bool:

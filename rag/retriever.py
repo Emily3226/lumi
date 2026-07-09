@@ -1,21 +1,19 @@
 """
 rag/retriever.py
-RAG component — embeds mentor profiles using sentence-transformers
-(a HuggingFace model, runs fully locally, no API needed)
-and retrieves the most relevant ones for a given mentee query.
-
-This uses YOUR PyTorch/transformers knowledge directly —
-sentence-transformers is built on top of the same transformer
-architecture from CS230.
+RAG component — embeds mentor profiles using a local ONNX embedding model
+(all-MiniLM-L6-v2, via rag/embeddings.py) and retrieves the most relevant
+ones for a given mentee query. Runs fully locally, no API needed.
 """
 
 from __future__ import annotations
 
 import numpy as np
+import os
+import sqlite3
 from sklearn.metrics.pairwise import cosine_similarity
 
-from api.db import DATABASE_URL, get_db
 from rag.embeddings import get_embedding_function
+
 from rag.subject_utils import SUBJECT_ALIASES, expand_query_text, subject_key
 
 # This model runs 100% locally — no API key needed
@@ -24,7 +22,7 @@ MODEL_NAME = "all-MiniLM-L6-v2"
 
 class MentorRetriever:
     def __init__(self, csv_path: str = "data/pairings.csv"):
-        print("Loading embedding model (cached locally after the first download - see rag/embeddings.py)...")
+        print("Loading embedding model (first run downloads ~90MB)...")
         self.model = get_embedding_function()
         # Try to load mentors from the SQLite DB (only available mentors)
         self.mentors = self._load_mentors_from_db() or self._load_mentors_from_csv(csv_path)
@@ -32,12 +30,12 @@ class MentorRetriever:
         print(f"RAG index built - {len(self.mentors)} mentor profiles indexed")
 
     def _connect_db(self):
-        if not DATABASE_URL:
+        db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "lumi.db")
+        if not os.path.exists(db_path):
             return None
-        try:
-            return get_db()
-        except Exception:
-            return None
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
 
     def _alias_text(self, subject: str | None) -> str:
         key = subject_key(subject)
