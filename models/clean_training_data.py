@@ -2,8 +2,8 @@
 models/clean_training_data.py
 
 Diagnoses and (optionally) removes suspicious rows from the
-`historical_pairings` table in data/training.db before retraining the
-mentor matcher.
+`historical_pairings` table on Neon Postgres (see api/db.py) before
+retraining the mentor matcher.
 
 Background: the cycle-level stats showed avg_grade_gap == 0.0 for the
 "Fall 2025" and "Summer 2025" cycles, while every other cycle averages
@@ -18,7 +18,7 @@ USAGE:
     # 1. Just show a report - makes NO changes
     python -m models.clean_training_data
 
-    # 2. Show the report AND delete the flagged rows (after taking a backup)
+    # 2. Show the report AND delete the flagged rows
     python -m models.clean_training_data --apply
 
     # 3. Then retrain on the cleaned data
@@ -28,26 +28,25 @@ USAGE:
 from __future__ import annotations
 
 import argparse
-import os
-import shutil
-import sqlite3
-from datetime import datetime
+
+from api.db import Connection, get_db
 
 
-def get_db_path() -> str:
-    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "training.db")
-
-
-def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+def _table_exists(conn: Connection, table_name: str) -> bool:
     row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+        "SELECT 1 FROM information_schema.tables WHERE table_name = ?",
         (table_name,),
     ).fetchone()
     return row is not None
 
 
-def _columns(conn: sqlite3.Connection, table_name: str) -> list[str]:
-    return [r[1] for r in conn.execute(f"PRAGMA table_info({table_name})").fetchall()]
+def _columns(conn: Connection, table_name: str) -> list[str]:
+    rows = conn.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_name = ? "
+        "ORDER BY ordinal_position",
+        (table_name,),
+    ).fetchall()
+    return [r[0] for r in rows]
 
 
 def main() -> None:
@@ -59,13 +58,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    db_path = get_db_path()
-    if not os.path.exists(db_path):
-        print(f"⚠ Database not found at {db_path}")
-        return
-
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn = get_db()
 
     if not _table_exists(conn, "historical_pairings"):
         print("⚠ No historical_pairings table found.")
@@ -106,7 +99,7 @@ def main() -> None:
     # 9-13) and are the most likely source of the bogus avg_grade_gap == 0.0
     # cycles.
     suspicious_query = """
-        SELECT rowid as rowid, *
+        SELECT *
         FROM historical_pairings
         WHERE COALESCE(mentor_grade, 0) = 0
           AND COALESCE(mentee_grade, 0) = 0
@@ -142,13 +135,14 @@ def main() -> None:
         return
 
     # --- Backup before destructive change ----------------------------------
-    backup_path = db_path + f".bak.{datetime.now().strftime('%Y%m%d%H%M%S')}"
-    shutil.copy2(db_path, backup_path)
-    print(f"\nBacked up training.db to: {backup_path}")
+    # Neon supports instant branching/point-in-time restore from the
+    # dashboard, so take a branch snapshot there before applying deletes if
+    # you want an easy rollback path (Project -> Branches -> New Branch).
+    print("\nProceeding with delete on Neon. Consider taking a Neon branch snapshot first if you haven't.")
 
-    rowids = [row["rowid"] for row in suspicious_rows]
-    placeholders = ",".join("?" for _ in rowids)
-    conn.execute(f"DELETE FROM historical_pairings WHERE rowid IN ({placeholders})", rowids)
+    ids = [row["id"] for row in suspicious_rows]
+    placeholders = ",".join("?" for _ in ids)
+    conn.execute(f"DELETE FROM historical_pairings WHERE id IN ({placeholders})", ids)
     conn.commit()
 
     remaining = conn.execute("SELECT COUNT(*) FROM historical_pairings").fetchone()[0]

@@ -1,31 +1,54 @@
 .env
+.env.*
 .env/
 .venv/
+venv/
 .vscode/
+.idea/
+
+# OS junk
+.DS_Store
+Thumbs.db
 
 # Tests
 check_env.py
 tests/
 
-# Python bytecode
+# Python bytecode / packaging
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
+build/
+dist/
+
+# Logs
+*.log
+
+# Node (frontend tooling, if ever added)
+node_modules/
 
 # Database & session data
-data/lumi.db
+# All local SQLite databases are legacy/scratch now that the app and the
+# training pipeline both read/write Neon Postgres (see api/db.py and
+# scripts/migrate_to_neon.py / scripts/migrate_training_to_neon.py).
+data/*.db
+data/*.db.bak.*
 data/chat_sessions.json
 
 # Runtime & user data (should not be tracked)
 data/user_memory.json
 
-# Chroma/vector DB (large, generated)
-data/contest_chroma/
-data/contest_chroma/*.sqlite3
+# Generated/derived data (regenerate via scripts/import_and_train.py)
+data/cleaned/
 
-# ML model artifacts
+# Chroma/vector DB (large, generated, machine-specific)
+data/contest_chroma/
+
+# ML model artifacts (regenerate via models/train.py)
 models/*.pkl
 models/*.joblib
 
-.env
+# Runtime-generated PDFs served to users (not source content)
+frontend/generated/

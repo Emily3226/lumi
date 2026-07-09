@@ -3,13 +3,14 @@ models/train.py
 Trains a mentor matcher model from cleaned historical pairings.
 
 Training source:
-- `historical_pairings` table in `data/training.db`
+- `historical_pairings` table on Neon Postgres (see api/db.py). If you still
+  have a local data/training.db, run scripts/migrate_training_to_neon.py once
+  to copy it over.
 """
 
 from __future__ import annotations
 
 import os
-import sqlite3
 from typing import Optional, Tuple
 
 import joblib
@@ -19,16 +20,13 @@ from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
+from api.db import Connection, get_db
 from rag.subject_utils import subject_matches
 
 
-def get_db_path() -> str:
-    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "training.db")
-
-
-def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+def _table_exists(conn: Connection, table_name: str) -> bool:
     row = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+        "SELECT 1 FROM information_schema.tables WHERE table_name = ?",
         (table_name,),
     ).fetchone()
     return row is not None
@@ -54,7 +52,7 @@ def _subject_match_feature(mentor_subjects: str | None, mentee_subjects: str | N
     return 1.0 if subject_matches(mentor_subjects, mentee_subjects) else 0.5
 
 
-def _load_from_historical_pairings(conn: sqlite3.Connection) -> Tuple[np.ndarray, np.ndarray] | Tuple[None, None]:
+def _load_from_historical_pairings(conn: Connection) -> Tuple[np.ndarray, np.ndarray] | Tuple[None, None]:
     if not _table_exists(conn, "historical_pairings"):
         return None, None
 
@@ -87,19 +85,14 @@ def _load_from_historical_pairings(conn: sqlite3.Connection) -> Tuple[np.ndarray
 
 
 def load_training_data() -> Tuple[np.ndarray, np.ndarray]:
-    db_path = get_db_path()
-    if not os.path.exists(db_path):
-        print("⚠ Database not found. Cannot train model.")
-        return None, None
+    conn = get_db()
+    try:
+        data = _load_from_historical_pairings(conn)
+    finally:
+        conn.close()
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-
-    data = _load_from_historical_pairings(conn)
-
-    conn.close()
     if data[0] is None:
-        print("⚠ No training rows found in training.db historical_pairings table.")
+        print("⚠ No training rows found in Neon's historical_pairings table.")
     return data
 
 

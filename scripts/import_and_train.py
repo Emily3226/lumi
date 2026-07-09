@@ -2,11 +2,12 @@
 scripts/import_and_train.py
 
 Clean mentor, mentee, and pairing CSVs from the data directory, import the
-normalized records into SQLite, generate a fairness summary, and retrain the
-mentor matcher model.
+normalized records into Neon Postgres (mentors/mentees/historical_pairings -
+see api/db.py), generate a fairness summary, and retrain the mentor matcher
+model.
 
 Usage:
-    c:/Users/ezhan/lumi/.venv/Scripts/python.exe scripts/import_and_train.py
+    python scripts/import_and_train.py
 
 Optional flags:
     --dry-run   Parse and report only, without writing to the database
@@ -18,9 +19,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import re
-import sqlite3
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -30,11 +29,11 @@ from statistics import mean
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
 CLEAN_DIR = DATA_DIR / "cleaned"
-APP_DB_PATH = DATA_DIR / "lumi.db"
-TRAINING_DB_PATH = DATA_DIR / "training.db"
 
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from api.db import Connection, get_db
 
 SEASON_ORDER = {"fall": 0, "winter": 1, "summer": 2}
 PAIRINGS_TABLE = "historical_pairings"
@@ -135,23 +134,36 @@ def detect_kind(path: Path) -> str | None:
     return None
 
 
-def connect_app_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(APP_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+def connect_db() -> Connection:
+    """Return a connection to the Neon Postgres database (see api/db.py)."""
+    return get_db()
 
 
-def connect_training_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(TRAINING_DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def ensure_tables(conn: sqlite3.Connection) -> None:
+def ensure_tables(conn: Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS mentors (
+            name           TEXT PRIMARY KEY,
+            grade          INTEGER,
+            qualifications TEXT,
+            subject        TEXT,
+            available      INTEGER DEFAULT 1
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS mentees (
+            name    TEXT PRIMARY KEY,
+            grade   INTEGER,
+            subject TEXT
+        )
+        """
+    )
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS historical_pairings (
-            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            id                  SERIAL PRIMARY KEY,
             cycle               TEXT,
             source_file         TEXT,
             mentor_name         TEXT,
@@ -167,10 +179,11 @@ def ensure_tables(conn: sqlite3.Connection) -> None:
             subject_count       INTEGER,
             grade_gap           INTEGER,
             match_score         REAL,
-            created_at          TEXT DEFAULT (datetime('now'))
+            created_at          TEXT DEFAULT to_char(now(), 'YYYY-MM-DD HH24:MI:SS')
         )
         """
     )
+    conn.commit()
 
 
 def subject_overlap_score(mentor_subjects: str, mentee_subjects: str) -> float:
@@ -272,7 +285,7 @@ def collect_profile_lookups(records: list[dict[str, object]]) -> dict[str, dict[
 
 
 def import_people(
-    conn: sqlite3.Connection,
+    conn: Connection,
     files: list[Path],
     kind: str,
     dry_run: bool,
@@ -317,7 +330,15 @@ def import_people(
                 for record in cleaned_rows:
                     if kind == "mentors":
                         conn.execute(
-                            "INSERT OR REPLACE INTO mentors (name, grade, qualifications, subject, available) VALUES (?, ?, ?, ?, 1)",
+                            """
+                            INSERT INTO mentors (name, grade, qualifications, subject, available)
+                            VALUES (?, ?, ?, ?, 1)
+                            ON CONFLICT (name) DO UPDATE SET
+                                grade = EXCLUDED.grade,
+                                qualifications = EXCLUDED.qualifications,
+                                subject = EXCLUDED.subject,
+                                available = EXCLUDED.available
+                            """,
                             (
                                 record["name"],
                                 record["grade"] or 0,
@@ -327,7 +348,13 @@ def import_people(
                         )
                     else:
                         conn.execute(
-                            "INSERT OR REPLACE INTO mentees (name, grade, subject) VALUES (?, ?, ?)",
+                            """
+                            INSERT INTO mentees (name, grade, subject)
+                            VALUES (?, ?, ?)
+                            ON CONFLICT (name) DO UPDATE SET
+                                grade = EXCLUDED.grade,
+                                subject = EXCLUDED.subject
+                            """,
                             (
                                 record["name"],
                                 record["grade"] or 0,
@@ -339,7 +366,7 @@ def import_people(
 
 
 def import_pairings(
-    conn: sqlite3.Connection,
+    conn: Connection,
     files: list[Path],
     mentor_lookup: dict[str, dict[str, object]],
     mentee_lookup: dict[str, dict[str, object]],
@@ -543,7 +570,7 @@ def discover_files() -> tuple[list[Path], list[Path], list[Path]]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Clean CSVs, import them into SQLite, and train the mentor matcher.")
+    parser = argparse.ArgumentParser(description="Clean CSVs, import them into Neon Postgres, and train the mentor matcher.")
     parser.add_argument("--dry-run", action="store_true", help="Parse and report only without writing to the database")
     parser.add_argument("--no-train", action="store_true", help="Skip retraining after import")
     args = parser.parse_args()
@@ -561,22 +588,16 @@ def main() -> int:
     print(f"Found {len(mentor_files)} mentor files, {len(mentee_files)} mentee files, {len(pairing_files)} pairing files.")
     print("Cleaning mentor and mentee data...")
 
-    app_conn = connect_app_db()
-    training_conn = connect_training_db()
-    ensure_tables(training_conn)
-
-    mentor_records, mentor_lookup, mentor_counts = import_people(app_conn, mentor_files, "mentors", args.dry_run)
-    mentee_records, mentee_lookup, mentee_counts = import_people(app_conn, mentee_files, "mentees", args.dry_run)
+    mentor_records, mentor_lookup, mentor_counts = import_people(conn, mentor_files, "mentors", args.dry_run)
+    mentee_records, mentee_lookup, mentee_counts = import_people(conn, mentee_files, "mentees", args.dry_run)
 
     print("Cleaning pairings and building fairness report...")
-    pairing_records, pairing_counts = import_pairings(training_conn, pairing_files, mentor_lookup, mentee_lookup, args.dry_run)
+    pairing_records, pairing_counts = import_pairings(conn, pairing_files, mentor_lookup, mentee_lookup, args.dry_run)
 
     if not args.dry_run:
-        app_conn.commit()
-        training_conn.commit()
+        conn.commit()
 
-    app_conn.close()
-    training_conn.close()
+    conn.close()
 
     report = build_fairness_report(pairing_records)
     CLEAN_DIR.mkdir(parents=True, exist_ok=True)
