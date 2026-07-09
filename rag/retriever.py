@@ -12,10 +12,10 @@ architecture from CS230.
 from __future__ import annotations
 
 import numpy as np
-from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 from sklearn.metrics.pairwise import cosine_similarity
 
 from api.db import DATABASE_URL, get_db
+from rag.embeddings import get_embedding_function
 from rag.subject_utils import SUBJECT_ALIASES, expand_query_text, subject_key
 
 # This model runs 100% locally — no API key needed
@@ -24,8 +24,8 @@ MODEL_NAME = "all-MiniLM-L6-v2"
 
 class MentorRetriever:
     def __init__(self, csv_path: str = "data/pairings.csv"):
-        print("Loading embedding model (first run downloads ~90MB)...")
-        self.model = DefaultEmbeddingFunction()
+        print("Loading embedding model (cached locally after the first download - see rag/embeddings.py)...")
+        self.model = get_embedding_function()
         # Try to load mentors from the SQLite DB (only available mentors)
         self.mentors = self._load_mentors_from_db() or self._load_mentors_from_csv(csv_path)
         self.index = self._build_index()

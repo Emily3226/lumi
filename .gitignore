@@ -52,3 +52,7 @@ models/*.joblib
 
 # Runtime-generated PDFs served to users (not source content)
 frontend/generated/
+
+# Downloaded embedding model weights (see rag/embeddings.py) - large binary
+# files, re-downloadable via scripts/warm_embedding_cache.py
+data/embedding_cache/

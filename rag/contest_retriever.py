@@ -92,11 +92,8 @@ def _normalize_topics(doc: str, raw_topics: list[str]) -> list[str]:
 def _get_embedding_function():
     global _embed_fn
     if _embed_fn is None:
-        try:
-            from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
-            _embed_fn = DefaultEmbeddingFunction()
-        except Exception:
-            _embed_fn = None
+        from rag.embeddings import get_embedding_function
+        _embed_fn = get_embedding_function()
     return _embed_fn
 
 
