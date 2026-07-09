@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import csv
 import os
-import sqlite3
 import logging
 
 logger = logging.getLogger(__name__)
 
+from api.db import get_db as get_db
 from models.inference import score_candidates
 from rag.retriever import MentorRetriever
 from rag.langchain_matcher import rank_candidates_langchain
@@ -17,7 +17,6 @@ from models.inference import trained_model_available
 
 
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
-DB_PATH = os.path.join(ROOT_DIR, "data", "lumi.db")
 
 _retriever: MentorRetriever | None = None
 
@@ -33,18 +32,12 @@ MIN_MATCH_SCORE = 0.35
 MAX_ALLOWED_BELOW_GRADE = 1
 
 
-def get_db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
 def init_db() -> None:
     conn = get_db()
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS bookings (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            id           SERIAL PRIMARY KEY,
             mentor_name  TEXT NOT NULL,
             mentee_name  TEXT NOT NULL,
             subject      TEXT NOT NULL,
@@ -52,7 +45,11 @@ def init_db() -> None:
             mentee_grade INTEGER,
             match_score  REAL,
             explanation  TEXT,
-            created_at   TEXT DEFAULT (datetime('now'))
+            created_at   TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS')),
+            status       TEXT DEFAULT 'active',
+            mentee_email TEXT,
+            slot_id      INTEGER,
+            slot_label   TEXT
         )
         """
     )
@@ -82,7 +79,7 @@ def init_db() -> None:
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS mentor_timeslots (
-            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            id           SERIAL PRIMARY KEY,
             mentor_name  TEXT NOT NULL,
             day_of_week  TEXT NOT NULL,
             start_time   TEXT NOT NULL,
@@ -92,25 +89,6 @@ def init_db() -> None:
         )
         """
     )
-
-    # Migrate old schema: if slot_date column exists but day_of_week does not,
-    # drop and recreate the table cleanly.
-    slot_cols = [r[1] for r in conn.execute("PRAGMA table_info(mentor_timeslots)").fetchall()]
-    if "slot_date" in slot_cols and "day_of_week" not in slot_cols:
-        conn.execute("DROP TABLE mentor_timeslots")
-        conn.execute(
-            """
-            CREATE TABLE mentor_timeslots (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                mentor_name  TEXT NOT NULL,
-                day_of_week  TEXT NOT NULL,
-                start_time   TEXT NOT NULL,
-                end_time     TEXT NOT NULL,
-                available    INTEGER DEFAULT 1,
-                FOREIGN KEY (mentor_name) REFERENCES mentors(name)
-            )
-            """
-        )
 
     cur = conn.execute("SELECT COUNT(1) as c FROM mentors")
     if cur.fetchone()[0] == 0:
@@ -125,7 +103,7 @@ def init_db() -> None:
                         continue
                     seen.add(name)
                     conn.execute(
-                        "INSERT OR IGNORE INTO mentors (name, grade, qualifications, subject, available) VALUES (?, ?, ?, ?, 1)",
+                        "INSERT INTO mentors (name, grade, qualifications, subject, available) VALUES (?, ?, ?, ?, 1) ON CONFLICT (name) DO NOTHING",
                         (
                             name,
                             int(row.get("mentor_grade") or 0),
@@ -135,16 +113,6 @@ def init_db() -> None:
                     )
         except FileNotFoundError:
             pass
-
-    cols = [r[1] for r in conn.execute("PRAGMA table_info(bookings)").fetchall()]
-    if "status" not in cols:
-        conn.execute("ALTER TABLE bookings ADD COLUMN status TEXT DEFAULT 'active'")
-    if "mentee_email" not in cols:
-        conn.execute("ALTER TABLE bookings ADD COLUMN mentee_email TEXT")
-    if "slot_id" not in cols:
-        conn.execute("ALTER TABLE bookings ADD COLUMN slot_id INTEGER")
-    if "slot_label" not in cols:
-        conn.execute("ALTER TABLE bookings ADD COLUMN slot_label TEXT")
 
     conn.commit()
     conn.close()
@@ -328,7 +296,7 @@ def book_pairing_in_db(
     if slot_id is not None:
         conn.execute("UPDATE mentor_timeslots SET available = 0 WHERE id = ?", (slot_id,))
     conn.execute(
-        "INSERT OR IGNORE INTO mentees (name, grade, subject) VALUES (?, ?, ?)",
+        "INSERT INTO mentees (name, grade, subject) VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING",
         (mentee_name, mentee_grade, subject),
     )
     conn.commit()
@@ -388,12 +356,11 @@ def add_mentor_slot(mentor_name: str, day_of_week: str, start_time: str) -> dict
         conn.close()
         raise ValueError("Mentor not found")
 
-    conn.execute(
-        "INSERT INTO mentor_timeslots (mentor_name, day_of_week, start_time, end_time, available) VALUES (?, ?, ?, ?, 1)",
+    slot_id = conn.execute(
+        "INSERT INTO mentor_timeslots (mentor_name, day_of_week, start_time, end_time, available) VALUES (?, ?, ?, ?, 1) RETURNING id",
         (mentor_name, day_of_week, start_time, end_time),
-    )
+    ).fetchone()[0]
     conn.commit()
-    slot_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.close()
     return {"id": slot_id, "mentor_name": mentor_name, "day_of_week": day_of_week, "start_time": start_time, "end_time": end_time, "available": True}
 

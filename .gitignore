@@ -27,3 +27,5 @@ data/contest_chroma/*.sqlite3
 # ML model artifacts
 models/*.pkl
 models/*.joblib
+
+.env

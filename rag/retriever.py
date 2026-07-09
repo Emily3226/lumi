@@ -12,11 +12,10 @@ architecture from CS230.
 from __future__ import annotations
 
 import numpy as np
-import os
-import sqlite3
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 from sklearn.metrics.pairwise import cosine_similarity
 
+from api.db import DATABASE_URL, get_db
 from rag.subject_utils import SUBJECT_ALIASES, expand_query_text, subject_key
 
 # This model runs 100% locally — no API key needed
@@ -33,12 +32,12 @@ class MentorRetriever:
         print(f"RAG index built - {len(self.mentors)} mentor profiles indexed")
 
     def _connect_db(self):
-        db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "lumi.db")
-        if not os.path.exists(db_path):
+        if not DATABASE_URL:
             return None
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            return get_db()
+        except Exception:
+            return None
 
     def _alias_text(self, subject: str | None) -> str:
         key = subject_key(subject)

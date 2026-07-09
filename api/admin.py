@@ -1,19 +1,11 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-import sqlite3
-import os
 from typing import Optional
 
+from api.db import get_db as _get_db
 from api.services import add_mentor_slot, delete_mentor_slot, get_mentor_slots
 
 router = APIRouter()
-
-
-def _get_db():
-    db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "lumi.db")
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
 
 
 class MentorIn(BaseModel):
@@ -35,7 +27,15 @@ def list_mentors():
 def add_mentor(m: MentorIn):
     conn = _get_db()
     conn.execute(
-        "INSERT OR REPLACE INTO mentors (name, grade, qualifications, subject, available) VALUES (?, ?, ?, ?, 1)",
+        """
+        INSERT INTO mentors (name, grade, qualifications, subject, available)
+        VALUES (?, ?, ?, ?, 1)
+        ON CONFLICT (name) DO UPDATE SET
+            grade = EXCLUDED.grade,
+            qualifications = EXCLUDED.qualifications,
+            subject = EXCLUDED.subject,
+            available = EXCLUDED.available
+        """,
         (m.name, m.grade, m.qualifications or "", m.subject),
     )
     conn.commit()

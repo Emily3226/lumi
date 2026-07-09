@@ -37,6 +37,10 @@ from fastapi.responses import RedirectResponse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+from api.env import load_dotenv_once
+
+load_dotenv_once()
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
