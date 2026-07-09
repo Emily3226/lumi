@@ -20,7 +20,12 @@ ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
 DB_PATH = os.path.join(ROOT_DIR, "data", "lumi.db")
 
 
-retriever = MentorRetriever()
+retriever: MentorRetriever | None = None
+def get_retriever() -> MentorRetriever:
+     global _retriever
+     if _retriever is None:
+         _retriever = MentorRetriever()
+     return _retriever
 MIN_MATCH_SCORE = 0.35
 MAX_ALLOWED_BELOW_GRADE = 1
 
@@ -162,7 +167,7 @@ def match_mentors(
     subject_hint = subject_key(query_text)
 
     # Increase retriever recall to give rerankers more options
-    candidates = retriever.retrieve(query, grade_value, top_k=max(top_k * 3, 10))
+    candidates = get_retriever().retrieve(query, grade_value, top_k=max(top_k * 3, 10))
     mentee = {
         "name": mentee_name,
         "grade": grade_value,
@@ -238,7 +243,7 @@ def match_mentors_debug(
     subject_hint = subject_key(query_text)
 
     # Pull more candidates to allow reranking
-    raw_candidates = retriever.retrieve(query, grade_value, top_k=max(top_k * 4, 20))
+    raw_candidates = get_retriever().retrieve(query, grade_value, top_k=max(top_k * 4, 20))
 
     langchain_ranked = None
     try:
