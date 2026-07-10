@@ -68,14 +68,14 @@ app.add_middleware(
 
 init_db()
 
-# Build the mentor-matching retriever (loads embedding model + encodes all
-# mentor profiles) once now, at boot, instead of lazily on the first user
-# chat message. See get_retriever() in api/services.py.
-try:
-    from api.services import get_retriever
-    get_retriever()
-except Exception as e:
-    print(f"[STARTUP] Mentor retriever warm-up skipped due to error: {e}")
+# NOTE: the mentor retriever (embedding model + encoded mentor profiles) is
+# intentionally NOT warmed up here anymore. On memory-constrained instances
+# (e.g. Render free/starter tier, 512MB), loading the ONNX embedding model
+# at boot plus whatever loads during the first couple of chat requests
+# (chromadb client for the contest retriever, etc.) was enough to push the
+# process over its memory limit and get OOM-killed. get_retriever() in
+# api/services.py is already a lazy singleton, so it will simply load on
+# the first request that actually needs it instead of at startup.
 
 # Pre-render all known problem/solution images at startup so the first real
 # user request for any problem is served from cache instead of paying the
