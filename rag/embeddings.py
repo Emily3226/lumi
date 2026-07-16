@@ -4,38 +4,29 @@ rag/embeddings.py
 Shared local embedding function for both retrievers (rag/retriever.py and
 rag/contest_retriever.py).
 
-Why this exists instead of calling chromadb.utils.embedding_functions.
-DefaultEmbeddingFunction() directly everywhere:
-
-DefaultEmbeddingFunction downloads the all-MiniLM-L6-v2 ONNX model to a
-hardcoded path (~/.cache/chroma/onnx_models/...) with no built-in way to
-redirect it. On platforms with ephemeral/wiped local disks (Render's free
-tier, most serverless/container platforms), that means the ~90MB model
-gets re-downloaded on every fresh boot. On a persistent-disk VM like an
-Oracle Cloud Always Free instance this is much less of an issue since the
-disk survives restarts/redeploys, but we still keep this override so the
-cache lives in a known, inspectable location rather than a user's home dir.
+Uses rag/onnx_embedder.py - a standalone, chromadb-free re-implementation
+of the all-MiniLM-L6-v2 ONNX embedding model. We deliberately do NOT import
+chromadb here (even though we used to, for its embedding-function utility
+class): chromadb's package __init__ pulls in its full client/telemetry
+surface, which costs real memory and startup time we can't spare on a
+1GB-RAM instance (Oracle's free E2.1.Micro shape) - and we don't use
+chromadb for storage anymore anyway (MongoDB Atlas does that now).
 
 Important: this module deliberately stays on the ONNX Runtime backend
 (onnxruntime + tokenizers), NOT sentence-transformers/PyTorch. Torch alone
 adds 300-500MB+ of resident memory just to import and load a small model,
-which is enough by itself to OOM a 512MB instance. ONNX Runtime is 5-10x
-lighter and is already a transitive dependency of chromadb, so this adds
-zero new heavy dependencies.
-
-`ONNXMiniLM_L6_V2.DOWNLOAD_PATH` is a plain class/instance attribute
-(see chromadb/utils/embedding_functions/onnx_mini_lm_l6_v2.py), so we can
-just override it before the model is lazily downloaded on first use.
+enough by itself to OOM a 1GB instance. ONNX Runtime is 5-10x lighter.
 
 CACHE_DIR:
-  - defaults to <repo_root>/data/embedding_cache (easy to inspect, and easy
-    to point a Render persistent disk at if you have one), and
+  - defaults to <repo_root>/data/embedding_cache (easy to inspect), and
   - can be overridden entirely via the EMBEDDING_MODEL_CACHE_DIR env var.
 
+The model (~90MB) downloads once into CACHE_DIR and is never re-fetched
+after that as long as the disk persists - true on Oracle Cloud (unlike
+Render's free tier, which wiped ephemeral disk on every cold start).
+
 To avoid ever downloading it at request time, run
-`python scripts/warm_embedding_cache.py` once (or as part of your Render
-build command) - the model will then already be on disk before the app
-starts serving traffic.
+`python scripts/warm_embedding_cache.py` once before serving traffic.
 """
 
 from __future__ import annotations
@@ -54,24 +45,16 @@ _embed_fn = None
 
 
 def get_embedding_function() -> Any:
-    """Return a shared, Chroma-compatible ONNX embedding function instance
-    (or None if the onnxruntime/tokenizers deps are unavailable), with its
-    model download path redirected to CACHE_DIR instead of ~/.cache.
+    """Return a shared, callable embedding function instance (or None if
+    onnxruntime/tokenizers deps are unavailable): `fn(list[str]) -> list[np.ndarray]`.
     """
     global _embed_fn
     if _embed_fn is None:
         try:
             os.makedirs(CACHE_DIR, exist_ok=True)
-            from chromadb.utils.embedding_functions.onnx_mini_lm_l6_v2 import (
-                ONNXMiniLM_L6_V2,
-            )
+            from rag.onnx_embedder import ONNXEmbedder
 
-            fn = ONNXMiniLM_L6_V2()
-            # Redirect the hardcoded ~/.cache path to our controlled,
-            # env-overridable directory. Must be set before the model is
-            # first invoked (download happens lazily on first __call__).
-            fn.DOWNLOAD_PATH = CACHE_DIR
-            _embed_fn = fn
+            _embed_fn = ONNXEmbedder(download_path=CACHE_DIR)
         except Exception as e:
             print(f"⚠ Local embedding function unavailable: {e}")
             _embed_fn = None

@@ -7,7 +7,11 @@
     "[general] hello -> Hi there! How can I help you today?",
     "[match] i want a mentor -> Switched to the Match agent.\n\nWhat grade is the mentee in?",
     "[match] 9 -> What subject or skill do you want help with?",
-    "[match] math -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
+    "[match] math -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
+    "[match] 9 -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing.",
+    "[contest] i want contest help -> Switched to the Contest agent.\n\nAsk for a contest problem, a solution explanation, or say which contest you want to practice.",
+    "[contest] euclid 2025 q6 -> Sure! I’m happy to help with Euclid 2025 Problem 6. Could you please share the exact problem statement (and any solution text you have, if you’d like)? That way I can give you a clear, step‑by‑step explanation.",
+    "[contest] what no i want to see euclid 2025 problen 6 -> The contest problem database hasn't been indexed yet.\n\nRun the ingestion script first:\n  python -m scripts.ingest_contests --pdf-root /path/to/your/contests\n\nOnce indexed, I can answer questions, retrieve problems, and explain solutions."
   ],
   "updated_at": "session_h9ssvcv"
 }
