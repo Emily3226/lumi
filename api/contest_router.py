@@ -39,6 +39,7 @@ class ContestChatResponse(BaseModel):
     active_agent: str | None = None
     problem_set_url: str | None = None
     problem_set_label: str | None = None
+    solutions_url: str | None = None
 
 
 class ContestSearchRequest(BaseModel):
@@ -79,6 +80,7 @@ def contest_ask(req: ContestChatRequest):
         active_agent=result.active_agent,
         problem_set_url=result.problem_set_url,
         problem_set_label=result.problem_set_label,
+        solutions_url=result.solutions_url,
     )
 
 
