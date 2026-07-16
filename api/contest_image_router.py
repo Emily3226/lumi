@@ -56,17 +56,27 @@ _doc_order: list[str] = []
 
 
 def _get_doc(path: str) -> fitz.Document:
+    """`path` is a logical GridFS key (e.g. "Euclid/2020Euclid.pdf"). We
+    resolve it to a local file - downloading from GridFS into the disk
+    cache on first use - then open + cache the fitz.Document as before.
+    """
     if path in _doc_cache:
         _doc_order.remove(path)
         _doc_order.append(path)
         return _doc_cache[path]
+
+    from rag.mongo_pdf_store import get_local_path
+    local_path = get_local_path(path)
+    if not local_path:
+        raise HTTPException(status_code=404, detail=f"PDF not found in storage: {path}")
+
     while len(_doc_cache) >= _DOC_CACHE_SIZE:
         oldest = _doc_order.pop(0)
         try:
             _doc_cache.pop(oldest).close()
         except Exception:
             pass
-    doc = fitz.open(path)
+    doc = fitz.open(local_path)
     _doc_cache[path] = doc
     _doc_order.append(path)
     return doc
@@ -123,8 +133,15 @@ def _render_cache_set(key: tuple, value: dict) -> None:
 # ── Safety ────────────────────────────────────────────────────────────────────
 
 def _safe(path: str) -> bool:
+    """`path` here is a logical GridFS key like "Euclid/2020Euclid.pdf"
+    (see rag/mongo_pdf_store.py), not a local filesystem path. Guard against
+    path traversal and make sure it's a PDF; existence in GridFS is checked
+    later by _get_doc / mongo_pdf_store.get_local_path.
+    """
+    if not path or path.startswith("/") or ".." in path:
+        return False
     p = Path(path)
-    return p.is_absolute() and p.suffix.lower() in _ALLOWED_EXT and p.exists()
+    return p.suffix.lower() in _ALLOWED_EXT
 
 
 # ── Cropping helpers ──────────────────────────────────────────────────────────

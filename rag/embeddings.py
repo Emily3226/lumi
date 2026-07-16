@@ -9,9 +9,12 @@ DefaultEmbeddingFunction() directly everywhere:
 
 DefaultEmbeddingFunction downloads the all-MiniLM-L6-v2 ONNX model to a
 hardcoded path (~/.cache/chroma/onnx_models/...) with no built-in way to
-redirect it. On platforms like Render, whose local disk is wiped between
-deploys/restarts (unless you've attached a persistent disk), that means the
-~90MB model gets re-downloaded on every fresh boot.
+redirect it. On platforms with ephemeral/wiped local disks (Render's free
+tier, most serverless/container platforms), that means the ~90MB model
+gets re-downloaded on every fresh boot. On a persistent-disk VM like an
+Oracle Cloud Always Free instance this is much less of an issue since the
+disk survives restarts/redeploys, but we still keep this override so the
+cache lives in a known, inspectable location rather than a user's home dir.
 
 Important: this module deliberately stays on the ONNX Runtime backend
 (onnxruntime + tokenizers), NOT sentence-transformers/PyTorch. Torch alone

@@ -29,20 +29,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pathlib import Path
 
 from rag.contest_ingestor import ingest_all, discover_contest_files, pair_contest_files, ingest_pair
-from rag.contest_retriever import add_chunks, collection_count, _get_collection, CHROMA_DIR
+from rag.contest_retriever import add_chunks, collection_count, COLLECTION_NAME
+from api.db import get_db
 
 
 def clear_collection() -> None:
-    """Delete and recreate the ChromaDB collection."""
+    """Delete every document in the contest_chunks MongoDB collection."""
     try:
-        import chromadb
-        from rag.contest_retriever import COLLECTION_NAME, _get_embedding_function
-        client = chromadb.PersistentClient(path=CHROMA_DIR)
-        try:
-            client.delete_collection(COLLECTION_NAME)
-            print("  Cleared existing collection.")
-        except Exception:
-            pass  # Collection didn't exist yet
+        result = get_db()[COLLECTION_NAME].delete_many({})
+        print(f"  Cleared {result.deleted_count} existing document(s).")
     except Exception as e:
         print(f"  ⚠ Could not clear collection: {e}")
 
@@ -64,11 +59,11 @@ def main():
     print(f"\n{'='*55}")
     print(f"  Waterloo Contest Ingestion")
     print(f"  PDF root : {pdf_root}")
-    print(f"  ChromaDB : {CHROMA_DIR}")
+    print(f"  MongoDB  : {COLLECTION_NAME} collection (+ contest_pdfs GridFS bucket)")
     print(f"{'='*55}\n")
 
     if args.clear and not args.dry_run:
-        print("Clearing existing ChromaDB collection...")
+        print("Clearing existing MongoDB collection...")
         clear_collection()
 
     print("Discovering PDF files...")
@@ -111,7 +106,7 @@ def main():
             print(f"    - {label}: {err}")
 
     if args.dry_run:
-        print("\nDry run — skipping ChromaDB write.")
+        print("\nDry run — skipping MongoDB write.")
         print("\nSample chunk (first one):")
         if all_chunks:
             c = all_chunks[0]
@@ -125,7 +120,7 @@ def main():
         print("\nNo chunks to index.")
         return
 
-    print(f"\nWriting to ChromaDB...")
+    print(f"\nUploading PDFs to GridFS and writing chunks + embeddings to MongoDB...")
 
     # Convert to dicts for the retriever
     chunk_dicts = [
@@ -140,7 +135,7 @@ def main():
     add_chunks(chunk_dicts)
 
     final_count = collection_count()
-    print(f"  ✓ ChromaDB now contains {final_count} indexed problem chunks")
+    print(f"  ✓ MongoDB now contains {final_count} indexed problem chunks")
     print(f"\nDone! The contest knowledge base is ready.")
     print(f"Start the API server and try: 'show me a Euclid combinatorics problem'\n")
 

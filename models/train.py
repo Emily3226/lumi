@@ -20,16 +20,8 @@ from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-from api.db import Connection, get_db
+from api.db import get_db
 from rag.subject_utils import subject_matches
-
-
-def _table_exists(conn: Connection, table_name: str) -> bool:
-    row = conn.execute(
-        "SELECT 1 FROM information_schema.tables WHERE table_name = ?",
-        (table_name,),
-    ).fetchone()
-    return row is not None
 
 
 def _subject_match_feature(mentor_subjects: str | None, mentee_subjects: str | None) -> float:
@@ -52,18 +44,16 @@ def _subject_match_feature(mentor_subjects: str | None, mentee_subjects: str | N
     return 1.0 if subject_matches(mentor_subjects, mentee_subjects) else 0.5
 
 
-def _load_from_historical_pairings(conn: Connection) -> Tuple[np.ndarray, np.ndarray] | Tuple[None, None]:
-    if not _table_exists(conn, "historical_pairings"):
-        return None, None
-
-    rows = conn.execute(
-        """
-        SELECT mentor_subjects, mentee_subjects, mentor_grade, mentee_grade,
-               grade_gap, match_score
-        FROM historical_pairings
-        WHERE match_score IS NOT NULL
-        """
-    ).fetchall()
+def _load_from_historical_pairings(db) -> Tuple[np.ndarray, np.ndarray] | Tuple[None, None]:
+    rows = list(
+        db["historical_pairings"].find(
+            {"match_score": {"$ne": None}},
+            {
+                "_id": 0, "mentor_subjects": 1, "mentee_subjects": 1,
+                "mentor_grade": 1, "mentee_grade": 1, "grade_gap": 1, "match_score": 1,
+            },
+        )
+    )
 
     if not rows:
         return None, None
@@ -85,14 +75,11 @@ def _load_from_historical_pairings(conn: Connection) -> Tuple[np.ndarray, np.nda
 
 
 def load_training_data() -> Tuple[np.ndarray, np.ndarray]:
-    conn = get_db()
-    try:
-        data = _load_from_historical_pairings(conn)
-    finally:
-        conn.close()
+    db = get_db()
+    data = _load_from_historical_pairings(db)
 
     if data[0] is None:
-        print("⚠ No training rows found in Neon's historical_pairings table.")
+        print("⚠ No training rows found in the historical_pairings collection.")
     return data
 
 

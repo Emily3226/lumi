@@ -17,95 +17,75 @@ class MentorIn(BaseModel):
 
 @router.get("/mentors")
 def list_mentors():
-    conn = _get_db()
-    rows = conn.execute("SELECT name, grade, qualifications, subject, available FROM mentors").fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    db = _get_db()
+    return list(db["mentors"].find({}, {"_id": 0, "name": 1, "grade": 1, "qualifications": 1, "subject": 1, "available": 1}))
 
 
 @router.post("/mentors")
 def add_mentor(m: MentorIn):
-    conn = _get_db()
-    conn.execute(
-        """
-        INSERT INTO mentors (name, grade, qualifications, subject, available)
-        VALUES (?, ?, ?, ?, 1)
-        ON CONFLICT (name) DO UPDATE SET
-            grade = EXCLUDED.grade,
-            qualifications = EXCLUDED.qualifications,
-            subject = EXCLUDED.subject,
-            available = EXCLUDED.available
-        """,
-        (m.name, m.grade, m.qualifications or "", m.subject),
+    db = _get_db()
+    db["mentors"].update_one(
+        {"name": m.name},
+        {"$set": {
+            "name": m.name,
+            "grade": m.grade,
+            "qualifications": m.qualifications or "",
+            "subject": m.subject,
+        }, "$setOnInsert": {"available": 1}},
+        upsert=True,
     )
-    conn.commit()
-    conn.close()
     return {"status": "ok", "mentor": m.name}
 
 
 @router.post("/mentors/{name}/availability")
 def set_availability(name: str, available: int = 1):
-    conn = _get_db()
-    cur = conn.execute("SELECT name FROM mentors WHERE name = ?", (name,)).fetchone()
-    if not cur:
-        conn.close()
+    db = _get_db()
+    if not db["mentors"].find_one({"name": name}):
         raise HTTPException(status_code=404, detail="Mentor not found")
-    conn.execute("UPDATE mentors SET available = ? WHERE name = ?", (1 if available else 0, name))
-    conn.commit()
-    conn.close()
+    db["mentors"].update_one({"name": name}, {"$set": {"available": 1 if available else 0}})
     return {"status": "ok", "name": name, "available": bool(available)}
 
 
 @router.get("/mentees")
 def list_mentees():
-    conn = _get_db()
-    rows = conn.execute("SELECT name, grade, subject FROM mentees").fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    db = _get_db()
+    return list(db["mentees"].find({}, {"_id": 0, "name": 1, "grade": 1, "subject": 1}))
 
 
 @router.get("/bookings")
 def list_bookings():
-    conn = _get_db()
-    rows = conn.execute(
-        "SELECT id, mentor_name, mentee_name, subject, mentor_grade, mentee_grade, match_score, explanation, created_at, status, slot_id, slot_label FROM bookings ORDER BY created_at DESC"
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+    db = _get_db()
+    fields = {
+        "_id": 0, "id": 1, "mentor_name": 1, "mentee_name": 1, "subject": 1,
+        "mentor_grade": 1, "mentee_grade": 1, "match_score": 1, "explanation": 1,
+        "created_at": 1, "status": 1, "slot_id": 1, "slot_label": 1,
+    }
+    return list(db["bookings"].find({}, fields).sort("created_at", -1))
 
 
 @router.post("/bookings/{booking_id}/cancel")
 def cancel_booking(booking_id: int):
-    conn = _get_db()
-    cur = conn.execute("SELECT id, mentor_name, status, slot_id FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    db = _get_db()
+    cur = db["bookings"].find_one({"id": booking_id})
     if not cur:
-        conn.close()
         raise HTTPException(status_code=404, detail="Booking not found")
-    if cur['status'] == 'cancelled':
-        conn.close()
+    if cur["status"] == "cancelled":
         return {"status": "already_cancelled", "id": booking_id}
 
-    # mark booking cancelled and release mentor
-    conn.execute("UPDATE bookings SET status = 'cancelled' WHERE id = ?", (booking_id,))
-    conn.execute("UPDATE mentors SET available = 1 WHERE name = ?", (cur['mentor_name'],))
-    # free the time slot too
-    if cur['slot_id']:
-        conn.execute("UPDATE mentor_timeslots SET available = 1 WHERE id = ?", (cur['slot_id'],))
-    conn.commit()
-    conn.close()
+    db["bookings"].update_one({"id": booking_id}, {"$set": {"status": "cancelled"}})
+    db["mentors"].update_one({"name": cur["mentor_name"]}, {"$set": {"available": 1}})
+    if cur.get("slot_id"):
+        db["mentor_timeslots"].update_one({"id": cur["slot_id"]}, {"$set": {"available": 1}})
     return {"status": "cancelled", "id": booking_id}
 
 
 @router.post("/bookings/{booking_id}/release-mentor")
 def release_mentor(booking_id: int):
-    conn = _get_db()
-    cur = conn.execute("SELECT mentor_name FROM bookings WHERE id = ?", (booking_id,)).fetchone()
+    db = _get_db()
+    cur = db["bookings"].find_one({"id": booking_id})
     if not cur:
-        conn.close()
         raise HTTPException(status_code=404, detail="Booking not found")
-    conn.execute("UPDATE mentors SET available = 1 WHERE name = ?", (cur['mentor_name'],))
-    conn.commit()
-    conn.close()
+    db["mentors"].update_one({"name": cur["mentor_name"]}, {"$set": {"available": 1}})
     return {"status": "mentor_released", "id": booking_id}
 
 

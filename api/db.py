@@ -1,110 +1,90 @@
 """
-Shared Postgres (Neon) connection helper.
+Shared MongoDB Atlas connection helper.
 
-Provides a thin sqlite3-like interface (conn.execute(...), row["col"],
-row[0], dict(row)) on top of psycopg2 so the rest of the codebase didn't
-need to be rewritten call-by-call when we moved off SQLite.
+Replaces the old Neon/Postgres connection (api/db.py used to wrap psycopg2).
+Configure with the MONGODB_URI environment variable, e.g.:
 
-Configure with the DATABASE_URL environment variable, e.g.:
+    mongodb+srv://user:password@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority
 
-    postgresql://user:password@ep-xxxx.neon.tech/dbname?sslmode=require
+You get this connection string from the Atlas dashboard
+(Database -> Connect -> Drivers). Database name defaults to "lumi" and can
+be overridden with MONGODB_DB_NAME.
 
-You can get this connection string from the Neon dashboard
-(Project -> Connect -> Connection string).
+This module also exposes `next_id(name)`, a small atomic counter helper so
+collections that used to rely on Postgres SERIAL/RETURNING id (bookings,
+mentor_timeslots) keep plain integer ids - nothing downstream (frontend,
+admin panel) has to change to deal with ObjectIds.
 """
 
 from __future__ import annotations
 
 import os
+from typing import Any
 
-import psycopg2
+from pymongo import MongoClient
+from pymongo.database import Database
 
 from api.env import load_dotenv_once
 
 load_dotenv_once()
 
-DATABASE_URL = os.environ.get("DATABASE_URL")
+MONGODB_URI = os.environ.get("MONGODB_URI")
+MONGODB_DB_NAME = os.environ.get("MONGODB_DB_NAME", "lumi")
+
+_client: MongoClient | None = None
+_db: Database | None = None
 
 
-def _to_pg(sql: str) -> str:
-    """Convert sqlite-style '?' positional placeholders to psycopg2 '%s'."""
-    return sql.replace("?", "%s")
-
-
-class Row(tuple):
-    """A tuple that also supports column-name access, like sqlite3.Row."""
-
-    _columns: tuple = ()
-
-    def __new__(cls, values, columns):
-        obj = super().__new__(cls, values)
-        obj._columns = columns
-        return obj
-
-    def __getitem__(self, key):
-        if isinstance(key, str):
-            return tuple.__getitem__(self, self._columns.index(key))
-        return tuple.__getitem__(self, key)
-
-    def keys(self):
-        return list(self._columns)
-
-
-class Cursor:
-    def __init__(self, cur):
-        self._cur = cur
-
-    def execute(self, sql: str, params=()) -> "Cursor":
-        self._cur.execute(_to_pg(sql), tuple(params) if params else params)
-        return self
-
-    def _wrap(self, row):
-        if row is None:
-            return None
-        cols = tuple(c.name for c in self._cur.description)
-        return Row(row, cols)
-
-    def fetchone(self):
-        return self._wrap(self._cur.fetchone())
-
-    def fetchall(self):
-        return [self._wrap(r) for r in self._cur.fetchall()]
-
-    @property
-    def lastrowid(self):
-        # Not used directly - see RETURNING id usage in services.py instead.
-        return None
-
-
-class Connection:
-    def __init__(self, conn):
-        self._conn = conn
-
-    def execute(self, sql: str, params=()) -> Cursor:
-        cur = Cursor(self._conn.cursor())
-        cur.execute(sql, params)
-        return cur
-
-    def cursor(self) -> Cursor:
-        return Cursor(self._conn.cursor())
-
-    def commit(self) -> None:
-        self._conn.commit()
-
-    def rollback(self) -> None:
-        self._conn.rollback()
-
-    def close(self) -> None:
-        self._conn.close()
-
-
-def get_db() -> Connection:
-    """Return a connection to the Neon Postgres database."""
-    if not DATABASE_URL:
-        raise RuntimeError(
-            "DATABASE_URL environment variable is not set. "
-            "Set it to your Neon connection string, e.g. "
-            "postgresql://user:password@ep-xxxx.neon.tech/dbname?sslmode=require"
+def get_client() -> MongoClient:
+    global _client
+    if _client is None:
+        if not MONGODB_URI:
+            raise RuntimeError(
+                "MONGODB_URI environment variable is not set. "
+                "Set it to your Atlas connection string, e.g. "
+                "mongodb+srv://user:password@cluster0.xxxxx.mongodb.net/"
+            )
+        # A small server-side connection pool is enough for a single small
+        # instance; serverSelectionTimeoutMS keeps failures fast instead of
+        # hanging a request for 30s if Atlas network access isn't configured.
+        _client = MongoClient(
+            MONGODB_URI,
+            serverSelectionTimeoutMS=8000,
+            maxPoolSize=20,
         )
-    raw = psycopg2.connect(DATABASE_URL)
-    return Connection(raw)
+    return _client
+
+
+def get_db() -> Database:
+    """Return the shared MongoDB database handle."""
+    global _db
+    if _db is None:
+        _db = get_client()[MONGODB_DB_NAME]
+    return _db
+
+
+def next_id(counter_name: str) -> int:
+    """Atomically return the next integer id for `counter_name`.
+
+    Mirrors Postgres SERIAL columns so bookings/mentor_timeslots keep small
+    int ids instead of ObjectIds.
+    """
+    doc = get_db()["counters"].find_one_and_update(
+        {"_id": counter_name},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=True,
+    )
+    return doc["seq"]
+
+
+def ensure_indexes() -> None:
+    """Create the indexes the app relies on. Safe to call repeatedly."""
+    db = get_db()
+    db["mentors"].create_index("name", unique=True)
+    db["mentees"].create_index("name", unique=True)
+    db["mentor_timeslots"].create_index("id", unique=True)
+    db["mentor_timeslots"].create_index("mentor_name")
+    db["bookings"].create_index("id", unique=True)
+    db["bookings"].create_index("created_at")
+    db["historical_pairings"].create_index("source_file")

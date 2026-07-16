@@ -1,20 +1,21 @@
-"""Shared database, matching, and booking helpers."""
+"""Shared database, matching, and booking helpers (MongoDB-backed)."""
 
 from __future__ import annotations
 
 import csv
 import os
 import logging
+import threading
+from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
-from api.db import get_db as get_db
+from api.db import get_db, next_id, ensure_indexes
 from models.inference import score_candidates
 from rag.retriever import MentorRetriever
 from rag.langchain_matcher import rank_candidates_langchain
 from rag.subject_utils import expand_query_text, subject_key, subject_matches
 from models.inference import trained_model_available
-import threading
 
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
 
@@ -30,103 +31,56 @@ def get_retriever() -> MentorRetriever:
                 _retriever = MentorRetriever()
     return _retriever
 
+
 MIN_MATCH_SCORE = 0.35
 MAX_ALLOWED_BELOW_GRADE = 1
 
 
+def _now_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def init_db() -> None:
-    conn = get_db()
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS bookings (
-            id           SERIAL PRIMARY KEY,
-            mentor_name  TEXT NOT NULL,
-            mentee_name  TEXT NOT NULL,
-            subject      TEXT NOT NULL,
-            mentor_grade INTEGER,
-            mentee_grade INTEGER,
-            match_score  REAL,
-            explanation  TEXT,
-            created_at   TEXT DEFAULT (to_char(now(), 'YYYY-MM-DD HH24:MI:SS')),
-            status       TEXT DEFAULT 'active',
-            mentee_email TEXT,
-            slot_id      INTEGER,
-            slot_label   TEXT
-        )
-        """
-    )
+    """Ensure indexes exist and seed mentors from data/pairings.csv if empty."""
+    db = get_db()
+    ensure_indexes()
 
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS mentors (
-            name           TEXT PRIMARY KEY,
-            grade          INTEGER,
-            qualifications TEXT,
-            subject        TEXT,
-            available      INTEGER DEFAULT 1
-        )
-        """
-    )
-
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS mentees (
-            name    TEXT PRIMARY KEY,
-            grade   INTEGER,
-            subject TEXT
-        )
-        """
-    )
-
-    conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS mentor_timeslots (
-            id           SERIAL PRIMARY KEY,
-            mentor_name  TEXT NOT NULL,
-            day_of_week  TEXT NOT NULL,
-            start_time   TEXT NOT NULL,
-            end_time     TEXT NOT NULL,
-            available    INTEGER DEFAULT 1,
-            FOREIGN KEY (mentor_name) REFERENCES mentors(name)
-        )
-        """
-    )
-
-    cur = conn.execute("SELECT COUNT(1) as c FROM mentors")
-    if cur.fetchone()[0] == 0:
+    if db["mentors"].count_documents({}) == 0:
         csv_path = os.path.join(ROOT_DIR, "data", "pairings.csv")
         try:
             with open(csv_path, newline="", encoding="utf-8") as handle:
                 reader = csv.DictReader(handle)
                 seen: set[str] = set()
+                docs = []
                 for row in reader:
                     name = row.get("mentor_name")
                     if not name or name in seen:
                         continue
                     seen.add(name)
-                    conn.execute(
-                        "INSERT INTO mentors (name, grade, qualifications, subject, available) VALUES (?, ?, ?, ?, 1) ON CONFLICT (name) DO NOTHING",
-                        (
-                            name,
-                            int(row.get("mentor_grade") or 0),
-                            row.get("mentor_qualifications") or "",
-                            row.get("mentor_subject") or "",
-                        ),
-                    )
+                    docs.append({
+                        "name": name,
+                        "grade": int(row.get("mentor_grade") or 0),
+                        "qualifications": row.get("mentor_qualifications") or "",
+                        "subject": row.get("mentor_subject") or "",
+                        "available": 1,
+                    })
+                if docs:
+                    for d in docs:
+                        db["mentors"].update_one(
+                            {"name": d["name"]}, {"$setOnInsert": d}, upsert=True
+                        )
         except FileNotFoundError:
             pass
 
-    conn.commit()
-    conn.close()
-
 
 def list_available_mentors() -> list[dict]:
-    conn = get_db()
-    rows = conn.execute(
-        "SELECT name, grade, qualifications, subject, available FROM mentors ORDER BY available DESC, name ASC"
-    ).fetchall()
-    conn.close()
-    return [dict(row) for row in rows]
+    db = get_db()
+    rows = list(
+        db["mentors"]
+        .find({}, {"_id": 0, "name": 1, "grade": 1, "qualifications": 1, "subject": 1, "available": 1})
+        .sort([("available", -1), ("name", 1)])
+    )
+    return rows
 
 
 def match_mentors(
@@ -148,7 +102,6 @@ def match_mentors(
         "subject_hint": subject_hint,
         "query_text": query_text.strip(),
     }
-    # Try LangChain-based reranker first (optional). If unavailable, fall back to internal scorer.
     langchain_ranked = None
     try:
         langchain_ranked = rank_candidates_langchain(mentee, candidates, top_k=top_k)
@@ -156,8 +109,6 @@ def match_mentors(
         langchain_ranked = None
     if langchain_ranked:
         logger.info("Using LangChain reranker for query: %s", query_text)
-        # Even when LangChain produces an initial ranking, use the trained model
-        # to compute final match scores so the trained program remains authoritative.
         strict = trained_model_available()
         ranked = score_candidates(mentee, langchain_ranked, strict=strict)
     else:
@@ -176,7 +127,6 @@ def match_mentors(
     if hard_filtered:
         ranked = hard_filtered
 
-    # If the mentee provided a subject hint, ensure subject-matching mentors are prioritized
     if subject_hint:
         def _subject_priority(item):
             try:
@@ -207,20 +157,20 @@ def match_mentors_debug(
     mentee_grade: int | None = None,
     top_k: int = 5,
 ) -> dict:
-    """Return detailed matching info for debugging and A/B comparisons.
-
-    Returns a dict with keys: mentee, matches, raw_candidates, langchain_used, trained_model_loaded
-    """
+    """Return detailed matching info for debugging and A/B comparisons."""
     grade_value = int(mentee_grade or 0)
     query = expand_query_text(query_text)
     subject_hint = subject_key(query_text)
 
-    # Pull more candidates to allow reranking
     raw_candidates = get_retriever().retrieve(query, grade_value, top_k=max(top_k * 4, 20))
 
     langchain_ranked = None
     try:
-        langchain_ranked = rank_candidates_langchain({"name": mentee_name, "grade": grade_value, "subject": subject_hint or query_text}, raw_candidates, top_k=top_k)
+        langchain_ranked = rank_candidates_langchain(
+            {"name": mentee_name, "grade": grade_value, "subject": subject_hint or query_text},
+            raw_candidates,
+            top_k=top_k,
+        )
     except Exception:
         langchain_ranked = None
 
@@ -252,57 +202,44 @@ def book_pairing_in_db(
     slot_id: int | None = None,
     slot_label: str = "",
 ) -> None:
-    conn = get_db()
-    cur = conn.execute("SELECT available FROM mentors WHERE name = ?", (mentor_name,))
-    row = cur.fetchone()
-    if not row:
-        conn.close()
+    db = get_db()
+    mentor = db["mentors"].find_one({"name": mentor_name})
+    if not mentor:
         raise ValueError("Mentor not found")
-    if row[0] == 0:
-        conn.close()
+    if not mentor.get("available"):
         raise ValueError("Mentor already booked")
 
-    # Validate slot belongs to mentor and is still free (available=1)
     if slot_id is not None:
-        slot_row = conn.execute(
-            "SELECT id, available FROM mentor_timeslots WHERE id = ? AND mentor_name = ?",
-            (slot_id, mentor_name),
-        ).fetchone()
-        if not slot_row:
-            conn.close()
+        slot = db["mentor_timeslots"].find_one({"id": slot_id, "mentor_name": mentor_name})
+        if not slot:
             raise ValueError("Time slot not found for this mentor")
-        if slot_row["available"] == 0:
-            conn.close()
+        if not slot.get("available"):
             raise ValueError("That time slot is already taken")
-    conn.execute(
-        """
-        INSERT INTO bookings
-          (mentor_name, mentee_name, subject, mentor_grade, mentee_grade,
-           match_score, explanation, status, mentee_email, slot_id, slot_label)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
-        """,
-        (
-            mentor_name,
-            mentee_name,
-            subject,
-            mentor_grade,
-            mentee_grade,
-            match_score,
-            explanation,
-            mentee_email,
-            slot_id,
-            slot_label or "",
-        ),
-    )
-    conn.execute("UPDATE mentors SET available = 0 WHERE name = ?", (mentor_name,))
+
+    booking_id = next_id("bookings")
+    db["bookings"].insert_one({
+        "id": booking_id,
+        "mentor_name": mentor_name,
+        "mentee_name": mentee_name,
+        "subject": subject,
+        "mentor_grade": mentor_grade,
+        "mentee_grade": mentee_grade,
+        "match_score": match_score,
+        "explanation": explanation,
+        "created_at": _now_str(),
+        "status": "active",
+        "mentee_email": mentee_email,
+        "slot_id": slot_id,
+        "slot_label": slot_label or "",
+    })
+    db["mentors"].update_one({"name": mentor_name}, {"$set": {"available": 0}})
     if slot_id is not None:
-        conn.execute("UPDATE mentor_timeslots SET available = 0 WHERE id = ?", (slot_id,))
-    conn.execute(
-        "INSERT INTO mentees (name, grade, subject) VALUES (?, ?, ?) ON CONFLICT (name) DO NOTHING",
-        (mentee_name, mentee_grade, subject),
+        db["mentor_timeslots"].update_one({"id": slot_id}, {"$set": {"available": 0}})
+    db["mentees"].update_one(
+        {"name": mentee_name},
+        {"$setOnInsert": {"name": mentee_name, "grade": mentee_grade, "subject": subject}},
+        upsert=True,
     )
-    conn.commit()
-    conn.close()
 
 
 # ── Time slot helpers ─────────────────────────────────────────────────────────
@@ -312,37 +249,23 @@ def get_mentor_slots(mentor_name: str, only_available: bool = True) -> list[dict
     available=1 means the slot is free; available=0 means it is booked.
     """
     DAYS_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    conn = get_db()
+    db = get_db()
+    query: dict = {"mentor_name": mentor_name}
     if only_available:
-        rows = conn.execute(
-            """
-            SELECT id, mentor_name, day_of_week, start_time, end_time, available
-            FROM mentor_timeslots
-            WHERE mentor_name = ? AND available = 1
-            ORDER BY start_time
-            """,
-            (mentor_name,),
-        ).fetchall()
-    else:
-        rows = conn.execute(
-            """
-            SELECT id, mentor_name, day_of_week, start_time, end_time, available
-            FROM mentor_timeslots
-            WHERE mentor_name = ?
-            ORDER BY start_time
-            """,
-            (mentor_name,),
-        ).fetchall()
-    conn.close()
-    results = [dict(r) for r in rows]
-    results.sort(key=lambda r: (DAYS_ORDER.index(r["day_of_week"]) if r["day_of_week"] in DAYS_ORDER else 99, r["start_time"]))
-    return results
+        query["available"] = 1
+    rows = list(
+        db["mentor_timeslots"]
+        .find(query, {"_id": 0})
+        .sort("start_time", 1)
+    )
+    rows.sort(key=lambda r: (DAYS_ORDER.index(r["day_of_week"]) if r["day_of_week"] in DAYS_ORDER else 99, r["start_time"]))
+    return rows
 
 
 def add_mentor_slot(mentor_name: str, day_of_week: str, start_time: str) -> dict:
     """Add a recurring weekly 1-hour slot for a mentor.
     day_of_week: e.g. 'Monday', start_time: 'HH:MM' (24-hour)."""
-    from datetime import datetime, timedelta
+    from datetime import timedelta
 
     VALID_DAYS = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"}
     if day_of_week not in VALID_DAYS:
@@ -352,29 +275,25 @@ def add_mentor_slot(mentor_name: str, day_of_week: str, start_time: str) -> dict
     end_dt = start_dt + timedelta(hours=1)
     end_time = end_dt.strftime("%H:%M")
 
-    conn = get_db()
-    mentor_row = conn.execute("SELECT name FROM mentors WHERE name = ?", (mentor_name,)).fetchone()
-    if not mentor_row:
-        conn.close()
+    db = get_db()
+    if not db["mentors"].find_one({"name": mentor_name}):
         raise ValueError("Mentor not found")
 
-    slot_id = conn.execute(
-        "INSERT INTO mentor_timeslots (mentor_name, day_of_week, start_time, end_time, available) VALUES (?, ?, ?, ?, 1) RETURNING id",
-        (mentor_name, day_of_week, start_time, end_time),
-    ).fetchone()[0]
-    conn.commit()
-    conn.close()
+    slot_id = next_id("mentor_timeslots")
+    doc = {
+        "id": slot_id,
+        "mentor_name": mentor_name,
+        "day_of_week": day_of_week,
+        "start_time": start_time,
+        "end_time": end_time,
+        "available": 1,
+    }
+    db["mentor_timeslots"].insert_one(doc)
     return {"id": slot_id, "mentor_name": mentor_name, "day_of_week": day_of_week, "start_time": start_time, "end_time": end_time, "available": True}
 
 
 def delete_mentor_slot(slot_id: int) -> bool:
     """Delete a time slot by id. Returns True if deleted, False if not found."""
-    conn = get_db()
-    row = conn.execute("SELECT id FROM mentor_timeslots WHERE id = ?", (slot_id,)).fetchone()
-    if not row:
-        conn.close()
-        return False
-    conn.execute("DELETE FROM mentor_timeslots WHERE id = ?", (slot_id,))
-    conn.commit()
-    conn.close()
-    return True
+    db = get_db()
+    result = db["mentor_timeslots"].delete_one({"id": slot_id})
+    return result.deleted_count > 0

@@ -585,8 +585,26 @@ def ingest_pair(
 
     # pdf_path must ONLY point to the problem PDF, never to solution PDF
     # If we don't have a problem PDF, problems won't render but we won't show solutions either
-    pdf_path_str = str(contest_file.path.resolve()) if contest_file else ""
-    sol_pdf_path_str = str(solution_file.path.resolve()) if solution_file else ""
+    #
+    # Rather than storing an absolute local path (which only works on the
+    # machine ingestion ran on), upload the PDF into MongoDB GridFS and
+    # store a stable logical key ("<folder>/<filename>.pdf"). Serving code
+    # (api/contest_image_router.py) resolves this key back to a local file
+    # via rag/mongo_pdf_store.get_local_path(), downloading once and then
+    # caching on disk.
+    from rag.mongo_pdf_store import upload_pdf
+
+    if contest_file:
+        pdf_path_str = f"{contest_file.folder}/{contest_file.path.name}"
+        upload_pdf(contest_file.path, pdf_path_str)
+    else:
+        pdf_path_str = ""
+
+    if solution_file:
+        sol_pdf_path_str = f"{solution_file.folder}/{solution_file.path.name}"
+        upload_pdf(solution_file.path, sol_pdf_path_str)
+    else:
+        sol_pdf_path_str = ""
 
     expected = CONTEST_QUESTION_COUNT.get(canonical, 25)
 

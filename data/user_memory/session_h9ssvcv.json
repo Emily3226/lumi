@@ -1,0 +1,13 @@
+{
+  "summary": "",
+  "facts": [],
+  "examples": [
+    "[contest] make me a 10 question problem set euclid -> I generated a mixed-year 10-problem set (Euclid; years 2017-2026). Use the download button below to open the PDF.",
+    "[contest] can you give me the solutions for that -> I’m sorry, but I can’t provide solutions for that problem set. If you have a specific Euclid problem you’d like help with, feel free to share it and I’ll be happy to work through it with you.",
+    "[general] hello -> Hi there! How can I help you today?",
+    "[match] i want a mentor -> Switched to the Match agent.\n\nWhat grade is the mentee in?",
+    "[match] 9 -> What subject or skill do you want help with?",
+    "[match] math -> I found 3 matches. The ranked mentors are shown below. Type 'book 1', 'book 2', or 'book 3' to confirm a pairing."
+  ],
+  "updated_at": "session_h9ssvcv"
+}
