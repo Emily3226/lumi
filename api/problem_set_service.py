@@ -16,6 +16,12 @@ _CONTEST_RE = re.compile(
     re.I,
 )
 _COUNT_RE = re.compile(r"\b(\d{1,2})\s+(?:problems?|questions?)\b", re.I)
+# Looser variant used only for detecting problem-set *intent*: allows a few
+# words (e.g. a contest name) between the number and "problems"/"questions",
+# so "10 Euclid geometry problems" still counts even though the number and
+# the noun aren't adjacent. _COUNT_RE above (adjacent) is still what's used
+# to actually extract the count once we know it's a problem-set request.
+_LOOSE_COUNT_RE = re.compile(r"\b(\d{1,2})\b(?:\s+\w+){0,3}\s+(?:problems?|questions?)\b", re.I)
 _YEAR_RE = re.compile(r"\b(19\d{2}|20\d{2})\b")
 
 _CONTEST_MAP = {
@@ -46,9 +52,19 @@ class ProblemSetResult:
 
 def is_problem_set_request(text: str) -> bool:
     t = " ".join(text.lower().strip().split())
-    has_generate = any(word in t for word in ("generate", "create", "make", "build"))
+    has_generate = any(word in t for word in ("generate", "create", "make", "build", "give me", "put together"))
     has_target = any(word in t for word in ("problem set", "worksheet", "set of problems"))
-    return has_generate and has_target
+    if has_generate and has_target:
+        return True
+    # "make me 10 euclid problems" / "10 questions on euclid" - no literal
+    # "problem set" phrase, but a create-word + a count of problems/questions
+    # is just as clear a signal, and this phrasing is what an upstream
+    # paraphrase step tends to produce even when the user's original wording
+    # did say "problem set".
+    has_count = bool(_LOOSE_COUNT_RE.search(t))
+    if has_generate and has_count:
+        return True
+    return False
 
 
 def _wants_solutions(text: str) -> bool:

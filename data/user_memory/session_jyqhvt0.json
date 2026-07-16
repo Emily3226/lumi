@@ -1,0 +1,9 @@
+{
+  "summary": "",
+  "facts": [],
+  "examples": [
+    "[contest] Make me a problem set 10 questions euclid -> **Euclidean Geometry Problem Set – 10 Questions**\n\n1. In triangle ABC, AB = AC and ∠A = 20°. Point D lies on side BC such that ∠BAD = 10°. Find the measure of ∠ADC.\n\n2. In a circle with centre O, chords AB and CD intersect at point E inside the circle. Given AB = 8, CD = 6, and AE = 3, determine the length of EC.\n\n3. In right‑angled triangle PQR with ∠P = 90°, the altitude from P meets QR at H. If QH = 4 and RH = 9, compute the length of side PQ.\n\n4. In convex quadrilateral ABCD, the diagonals intersect at E. If AE = 3, EC = 5, BE = 2, and DE = 4, find the ratio of the areas of triangles ABE and CDE.\n\n5. In triangle XYZ, the internal angle bisectors of ∠X and ∠Y meet at the incenter I. Given IX = 4, IY = 6, and ∠Z = 60°, determine the length of side XY.\n\n6. In a regular hexagon ABCDEF, let G be the intersection of diagonals AD and BE. Find the ratio of the area of triangle AGD to the area of the hexagon.\n\n7. In triangle LMN, the circumcenter is O and the orthocenter is H. If LM = 10, MN = 8, and the distance OH = 6, find the radius of the circumcircle.\n\n8. In a circle of radius 5, chord AB subtends a central angle of 120°. Point C lies on the minor arc AB such that ∠ACB = 30°. Find the length of chord AC.\n\n9. In triangle PQR, the median from vertex P meets side QR at M. If PM = 7, QM = 5, and RM = 9, determine the length of side PQ.\n\n10. In square WXYZ with side length s, point M is the midpoint of side WX and point N is the foot of the perpendicular from M to diagonal WY. Find the length of segment MN in terms of s.",
+    "[contest] show me euclid 2025 q5 -> **Euclid 2025 — Problem 5**\nTopics: number_theory, geometry, combinatorics, sequences, trigonometry\n_Solution available — click Show solution below the image._"
+  ],
+  "updated_at": "2026-07-16T04:09:16.814982+00:00"
+}

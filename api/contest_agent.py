@@ -1564,6 +1564,7 @@ class ContestAgent:
         if session is None:
             session = {}
 
+        raw_message = message
         rewrite = _rewrite_user_message(message, session, forced_agent="contest")
         session["last_contest_prompt"] = rewrite.formatted_prompt
         message = rewrite.cleaned_message
@@ -1597,6 +1598,20 @@ class ContestAgent:
             )
 
         intent = detect_intent(message, session)
+
+        # The rewrite step above paraphrases the user's raw message into a
+        # "clean" internal prompt, and can end up dropping exact phrasing
+        # like "problem set" that the keyword-based classifier depends on
+        # (e.g. "make me a problem set, 10 questions, euclid" ->
+        # "Generate 10 Euclid geometry problems"). Fall back to checking the
+        # raw, unrewritten message directly so a paraphrase can't silently
+        # turn a problem-set request into a single-problem lookup.
+        if intent != "problem_set" and is_problem_set_request(_norm(raw_message)):
+            intent = "problem_set"
+            # Extraction (contest name, count, year) runs on plain regex
+            # matches over the text, so combine both versions rather than
+            # guessing which one kept the details.
+            message = f"{message} {raw_message}"
 
         if intent == "small_talk":
             return handle_small_talk(message, session)
