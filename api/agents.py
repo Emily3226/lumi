@@ -20,6 +20,13 @@ from api.email_service import send_booking_confirmation
 from api.llm_provider import call_cerebras, get_llm_config
 from rag.subject_utils import subject_key
 
+# NOTE: api.contest_agent imports `_rewrite_user_message` from this module
+# (api.agents), so importing it at module load time here would create a
+# circular import (agents -> contest_agent -> agents, before agents has
+# finished defining `_rewrite_user_message`). It's imported lazily inside
+# MentorTaskAgents.run() instead, by which point both modules are fully
+# loaded.
+
 
 GENERAL_KNOWLEDGE_PATH = Path(__file__).resolve().parents[1] / "data" / "general_knowledge.md"
 MENTOR_LIST_LIMIT = 3
@@ -96,6 +103,9 @@ class AgentResult:
     matches: list[dict] | None = None
     booking_state: str | None = None
     active_agent: str | None = None
+    problem_set_url: str | None = None
+    problem_set_label: str | None = None
+    solutions_url: str | None = None
 
 
 @dataclass
@@ -658,6 +668,7 @@ class MentorTaskAgents:
 
     def run(self, session_id: str, message: str, session: dict[str, Any], forced_agent: str | None = None) -> AgentResult:
         session["session_id"] = session_id
+        was_contest_before = session.get("active_agent") == "contest"
         intent = self._intent_for(message, session, forced_agent)
         rewrite = _rewrite_user_message(message, session, forced_agent, intent)
         session["last_agent_prompt"] = rewrite.formatted_prompt
@@ -673,6 +684,36 @@ class MentorTaskAgents:
                 self._set_active_agent(session, "contest")
             elif rewrite.target_agent == "general":
                 self._set_active_agent(session, "general")
+
+        # Once the session is already in Contest mode, hand this turn to the
+        # real contest agent (problem lookup, problem-set/PDF generation,
+        # solutions, etc.) instead of falling through to the generic LLM
+        # fallback in _general_agent. The turn that *enters* contest mode
+        # still returns the "Switched to the Contest agent" banner below,
+        # so the user sees that confirmation before their next message is
+        # treated as an actual contest request.
+        if (
+            was_contest_before
+            and session.get("active_agent") == "contest"
+            and not is_agent_switch_request(message)
+            and not is_negative_match_request(message)
+            and not is_match_request(message)
+        ):
+            from api.contest_agent import contest_agent  # lazy: see note near top imports
+
+            contest_result = contest_agent.run(message, session)
+            if contest_result.active_agent:
+                session["active_agent"] = contest_result.active_agent
+            return AgentResult(
+                reply=contest_result.reply,
+                state=session.get("state", "idle"),
+                matches=contest_result.problems or [],
+                booking_state=contest_result.intent,
+                active_agent=session.get("active_agent", "contest"),
+                problem_set_url=contest_result.problem_set_url,
+                problem_set_label=contest_result.problem_set_label,
+                solutions_url=contest_result.solutions_url,
+            )
 
         payload = {
             "session_id": session_id,

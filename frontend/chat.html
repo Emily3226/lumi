@@ -660,6 +660,13 @@
           }
           updateState(data);
           renderMatches(data.matches, data);
+          // A contest turn routed through /chat (e.g. the very first message
+          // that both switches into contest mode and asks for a problem set)
+          // can also come back with a generated PDF. Render it the same way
+          // sendContest() does, instead of only handling this in that path.
+          if (data.problem_set_url) {
+            renderProblemSetDownload(data.problem_set_url, data.problem_set_label, data.solutions_url);
+          }
         } catch (e) {
           addMsg('bot', `Could not reach the assistant. Is the API reachable at ${API}?`);
         }

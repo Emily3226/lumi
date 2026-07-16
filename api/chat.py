@@ -25,6 +25,9 @@ class ChatResponse(BaseModel):
     matches: list = Field(default_factory=list)
     booking_state: str | None = None
     active_agent: str | None = None
+    problem_set_url: str | None = None
+    problem_set_label: str | None = None
+    solutions_url: str | None = None
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -50,4 +53,7 @@ def chat(req: ChatRequest):
         matches=result.matches or [],
         booking_state=result.booking_state,
         active_agent=session.get("active_agent", "general"),
+        problem_set_url=result.problem_set_url,
+        problem_set_label=result.problem_set_label,
+        solutions_url=result.solutions_url,
     )
