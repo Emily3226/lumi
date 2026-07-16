@@ -1,0 +1,9 @@
+{
+  "summary": "",
+  "facts": [],
+  "examples": [
+    "[contest] make me 10 question problem set euclid -> I generated a mixed-year 10-problem set (Euclid; years 2017-2026). Use the download button below to open the PDF.",
+    "[contest] can you make the solutions for that -> I’m happy to work through the solutions, but I need the exact problem statements first. Could you please provide the ten Euclid problems you’d like solved? Once I have them, I’ll give detailed step‑by‑step solutions for each one."
+  ],
+  "updated_at": "session_jyqhvt0"
+}
