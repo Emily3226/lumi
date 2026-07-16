@@ -215,9 +215,22 @@ def is_negative_match_request(text: str) -> bool:
     )
 
 
+_KNOWN_CONTEST_NAMES_RE = re.compile(
+    r"\b(euclid|fryer|galois|hypatia|gauss\s*[78]?|pascal|cayley|fermat|cimc|csmc)\b",
+    re.I,
+)
+
+
 def is_contest_request(text: str) -> bool:
     t = _normalize(text)
-    return bool(re.search(r"\bcontest(s)?\b|\bolympiad\b|\bcompetition\b|\bAMC\b|\bAIME\b|contest math|contest problems|practice contest", t))
+    if re.search(r"\bcontest(s)?\b|\bolympiad\b|\bcompetition\b|\bAMC\b|\bAIME\b|contest math|contest problems|practice contest", t):
+        return True
+    # Also catch requests that name a specific Waterloo contest directly
+    # ("make me a euclid problem set") without the generic word "contest" -
+    # these used to fall through to the general LLM chat agent instead of
+    # the real contest pipeline, which just made up fictional problems
+    # instead of pulling real ones from the ingested PDFs.
+    return bool(_KNOWN_CONTEST_NAMES_RE.search(t))
 
 
 def _token_set(text: str) -> set[str]:
