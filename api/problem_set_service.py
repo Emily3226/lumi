@@ -344,20 +344,40 @@ def build_problem_set_from_text(text: str) -> ProblemSetResult:
     try:
         sol_pdf = fitz.open()
         sol_written = 0
+        sol_skipped_no_path = 0
         for p in rendered:
-            try:
-                if p.get("solution_pdf_path"):
-                    _add_solution_page(sol_pdf, p)
-                    sol_written += 1
-            except Exception:
+            if not p.get("solution_pdf_path"):
+                sol_skipped_no_path += 1
+                print(
+                    f"[DEBUG] No solution_pdf_path for "
+                    f"{p.get('contest')} {p.get('year')} problem {p.get('problem_number')} "
+                    f"- skipping it in the solutions PDF."
+                )
                 continue
+            try:
+                _add_solution_page(sol_pdf, p)
+                sol_written += 1
+            except Exception as e:
+                print(
+                    f"[DEBUG] Failed to render solution page for "
+                    f"{p.get('contest')} {p.get('year')} problem {p.get('problem_number')} "
+                    f"(solution_pdf_path={p.get('solution_pdf_path')!r}): {type(e).__name__}: {e}"
+                )
+                continue
+        print(
+            f"[DEBUG] Solutions PDF: {sol_written} rendered, "
+            f"{sol_skipped_no_path} skipped (no solution_pdf_path), "
+            f"out of {len(rendered)} problems total."
+        )
         if sol_written > 0:
             sol_filename = f"solutions_set_{safe_contests}_{stamp}.pdf"
             sol_out = _output_dir() / sol_filename
             sol_pdf.save(str(sol_out), deflate=True)
             solutions_url = f"/frontend/generated/{sol_filename}"
-    except Exception:
-        # Ignore solution-generation failures — we still have the problems PDF
+    except Exception as e:
+        # Still have the problems PDF even if this fails entirely - but log
+        # why, instead of silently returning no solutions.
+        print(f"[DEBUG] Solutions PDF generation failed entirely: {type(e).__name__}: {e}")
         solutions_url = None
     finally:
         if sol_pdf is not None:
