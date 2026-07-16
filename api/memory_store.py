@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
+import random
 import re
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +18,50 @@ _LEGACY_MEMORY_STORE_PATH = Path(__file__).resolve().parents[1] / "data" / "user
 MAX_FACTS = 60
 MAX_EXAMPLES = 12
 
+# How long a per-session memory file can sit untouched before it's treated as
+# stale and deleted. Override with the MEMORY_TTL_DAYS env var; set it to 0
+# to disable cleanup entirely.
+MEMORY_TTL_DAYS = int(os.environ.get("MEMORY_TTL_DAYS", "30"))
+
+# Cleanup runs once at import time (server startup) so restarts always sweep.
+# For long-running processes that rarely restart, save_memory() also has a
+# small random chance of triggering a sweep so stale files don't just pile
+# up indefinitely between deploys.
+_CLEANUP_PROBABILITY_ON_SAVE = 0.01
+
 _SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_\-]")
+
+
+def _cleanup_stale_memory_files(ttl_days: int = MEMORY_TTL_DAYS) -> int:
+    """Delete per-session memory files under MEMORY_STORE_DIR that haven't
+    been written to in `ttl_days` days. Returns the number of files removed.
+
+    Never raises - a failed cleanup sweep should never break saving or
+    loading memory for an active session. Only touches per-session files in
+    MEMORY_STORE_DIR; the legacy single-file store is left alone.
+    """
+    if ttl_days <= 0:
+        return 0
+    removed = 0
+    try:
+        if not MEMORY_STORE_DIR.exists():
+            return 0
+        cutoff = time.time() - (ttl_days * 86400)
+        for path in MEMORY_STORE_DIR.glob("*.json"):
+            try:
+                if path.stat().st_mtime < cutoff:
+                    path.unlink()
+                    removed += 1
+            except OSError:
+                continue
+    except OSError:
+        pass
+    return removed
+
+
+# Sweep once at startup so files from long-idle sessions get cleared even if
+# the process restarts frequently (e.g. during development).
+_cleanup_stale_memory_files()
 
 
 def _default_memory() -> dict[str, Any]:
@@ -70,11 +117,14 @@ def _get_memory(session_id: str | None) -> dict[str, Any]:
 
 def save_memory(session_id: str | None = None) -> None:
     memory = _get_memory(session_id)
+    memory["updated_at"] = datetime.now(timezone.utc).isoformat()
     path = _memory_path(session_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     temp_path = path.with_suffix(".tmp")
     temp_path.write_text(json.dumps(memory, ensure_ascii=False, indent=2), encoding="utf-8")
     temp_path.replace(path)
+    if random.random() < _CLEANUP_PROBABILITY_ON_SAVE:
+        _cleanup_stale_memory_files()
 
 
 def clear_session_memory(session_id: str | None = None) -> None:
@@ -183,7 +233,6 @@ def _extract_facts_from_text(text: str) -> list[str]:
 
 def observe_turn(session_id: str, user_message: str, assistant_reply: str, agent: str | None = None) -> None:
     memory = _get_memory(session_id)
-    memory["updated_at"] = session_id
 
     extracted_facts = _extract_facts_from_text(user_message)
     for fact in extracted_facts:
