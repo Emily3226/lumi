@@ -1608,10 +1608,6 @@ class ContestAgent:
         # turn a problem-set request into a single-problem lookup.
         if intent != "problem_set" and is_problem_set_request(_norm(raw_message)):
             intent = "problem_set"
-            # Extraction (contest name, count, year) runs on plain regex
-            # matches over the text, so combine both versions rather than
-            # guessing which one kept the details.
-            message = f"{message} {raw_message}"
 
         if intent == "small_talk":
             return handle_small_talk(message, session)
@@ -1639,7 +1635,21 @@ class ContestAgent:
         elif intent == "practice":
             return handle_practice(message, session)
         elif intent == "problem_set":
-            return handle_problem_set(message, session)
+            # Contest name / count / year extraction is plain regex matching
+            # over the text, so it must be grounded in what the user
+            # actually typed - the rewrite step above is an LLM call and can
+            # (and does) substitute a different contest name even while
+            # correctly preserving the overall intent. If the raw message
+            # names a contest, trust that alone rather than mixing in
+            # whatever the rewrite produced. Only fall back to combining
+            # with the rewritten text when the raw message didn't name one
+            # (e.g. a bare follow-up like "make me a problem set" that
+            # relies on earlier conversation context the rewrite folded in).
+            if _extract_contest(raw_message):
+                build_text = raw_message
+            else:
+                build_text = f"{raw_message} {message}"
+            return handle_problem_set(build_text, session)
         elif intent == "browse":
             return handle_browse(message, session)
         else:
