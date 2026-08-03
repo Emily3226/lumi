@@ -7,7 +7,7 @@ from pathlib import Path
 
 import fitz
 
-from api.contest_image_router import _get_doc, _get_labels, _render_crop
+from api.contest_image_router import _get_doc, _get_labels, _render_crop, render_png_cached
 from rag.contest_retriever import get_by_contest_year, list_available_contests
 
 
@@ -48,7 +48,10 @@ def is_problem_set_request(text: str) -> bool:
     t = " ".join(text.lower().strip().split())
     has_generate = any(word in t for word in ("generate", "create", "make", "build"))
     has_target = any(word in t for word in ("problem set", "worksheet", "set of problems"))
-    return has_generate and has_target
+    # Accept also forms like "generate 10 problems" or "give me 5 cimc problems"
+    count_form = bool(re.search(r"\b(\d{1,2})\s+problems?\b", t))
+    contest_problem_form = bool(_CONTEST_RE.search(t) and "problem" in t)
+    return has_generate and (has_target or count_form or contest_problem_form)
 
 
 def _extract_count(text: str) -> int:
@@ -178,18 +181,25 @@ def _add_problem_page(pdf: fitz.Document, problem: dict, scale: float = 2.0) -> 
     number = int(problem.get("problem_number", 0) or 0)
     pdf_path = problem.get("pdf_path", "")
 
-    doc = _get_doc(pdf_path)
-    labels = _get_labels(pdf_path, contest)
-    start_loc = labels.get(number)
-
-    if start_loc is None:
-        page_idx = max(0, int(problem.get("page_number", 1) or 1) - 1)
-        page_idx = min(page_idx, len(doc) - 1)
-        pix = doc[page_idx].get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
-        png = pix.tobytes("png")
-    else:
-        next_loc = _next_label(labels, start_loc)
-        png = _render_crop(doc, start_loc, next_loc, scale, is_last=next_loc is None)
+    # Use a slightly reduced render scale for batch PDF generation to speed
+    # up rendering while keeping acceptable visual quality. Also leverage the
+    # shared render cache via `render_png_cached` so repeated renders are reused.
+    use_scale = min(scale, 1.5)
+    try:
+        png = render_png_cached(pdf_path, number, contest, False, use_scale)
+    except Exception:
+        # Fallback to direct rendering if the cache helper fails for any reason
+        doc = _get_doc(pdf_path)
+        labels = _get_labels(pdf_path, contest)
+        start_loc = labels.get(number)
+        if start_loc is None:
+            page_idx = max(0, int(problem.get("page_number", 1) or 1) - 1)
+            page_idx = min(page_idx, len(doc) - 1)
+            pix = doc[page_idx].get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+            png = pix.tobytes("png")
+        else:
+            next_loc = _next_label(labels, start_loc)
+            png = _render_crop(doc, start_loc, next_loc, scale, is_last=next_loc is None)
 
     pix = fitz.Pixmap(png)
     a4_w, a4_h = 595.0, 842.0
@@ -219,11 +229,85 @@ def _add_solution_page(pdf: fitz.Document, problem: dict, scale: float = 2.0) ->
     if not sol_pdf_path:
         raise ValueError("No solution PDF path for problem")
 
-    doc = _get_doc(sol_pdf_path)
-    page_idx = max(0, int(problem.get("solution_page_number", problem.get("page_number", 1)) or 1) - 1)
-    page_idx = min(page_idx, len(doc) - 1)
-    pix = doc[page_idx].get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
-    png = pix.tobytes("png")
+    # Prefer to use the cached renderer with a lower scale for batch jobs.
+    use_scale = min(scale, 1.5)
+    try:
+        png = render_png_cached(sol_pdf_path, number, contest, True, use_scale)
+    except Exception:
+        # Fallback to the previous behavior if caching fails
+        doc = _get_doc(sol_pdf_path)
+        # First try to use existing problem labels (preferred: same cropping as
+        # the interactive "Show solution" view). This yields precisely cropped
+        # solution snippets using `_render_crop` when a problem label exists in
+        # the solution PDF. Otherwise fall back to searching for a page index
+        # via the heuristics and render the whole page.
+        labels = _get_labels(sol_pdf_path, contest)
+        start_loc = labels.get(number)
+
+        if start_loc is not None:
+            # Find next label to determine exclusive boundary
+            next_loc = _next_label(labels, start_loc)
+            is_last = next_loc is None
+            try:
+                png = _render_crop(doc, start_loc, next_loc, scale, is_last, is_solution=True)
+            except Exception:
+                # On failure, fall back to full-page rendering below
+                png = None
+        else:
+            png = None
+
+    # If we couldn't crop via labels, fall back to page-search heuristics
+    if png is None:
+        def _find_solution_page(doc: fitz.Document, prob_num: int) -> int | None:
+            check_pages = min(len(doc), 6)
+            combined = ""
+            for i in range(check_pages):
+                try:
+                    combined += "\n" + (doc[i].get_text() or "")
+                except Exception:
+                    continue
+            lower_combined = combined.lower()
+            is_solution_doc = any(k in lower_combined for k in ("solution", "solutions", "answer", "proof"))
+
+            pat_solution_explicit = re.compile(rf"(?m)(?:^|\n)\s*(?:Solution|Solutions|Answer|Proof)[^\n]*\b{prob_num}\b", re.I)
+            pat_solution_numbered = re.compile(rf"(?m)(?:^|\n)\s*Solution\s+{prob_num}\b", re.I)
+            pat_problem_numbered = re.compile(rf"(?m)(?:^|\n)\s*Problem\s+{prob_num}\b", re.I)
+            pat_prob_item = re.compile(rf"(?m)(?:^|\n)\s*{prob_num}\.\s*\(a\)", re.I)
+            pat_prob_line = re.compile(rf"(?m)(?:^|\n)\s*{prob_num}\.\s*$", re.I)
+
+            if is_solution_doc:
+                for i in range(len(doc)):
+                    try:
+                        txt = doc[i].get_text() or ""
+                    except Exception:
+                        continue
+                    if pat_solution_numbered.search(txt) or pat_solution_explicit.search(txt):
+                        return i
+                    if pat_problem_numbered.search(txt) or pat_prob_item.search(txt) or pat_prob_line.search(txt):
+                        return i
+            else:
+                for i in range(len(doc)):
+                    try:
+                        txt = doc[i].get_text() or ""
+                    except Exception:
+                        continue
+                    if pat_solution_numbered.search(txt) or pat_solution_explicit.search(txt):
+                        return i
+            return None
+
+        # Prefer an explicit solution_page_number when provided
+        if problem.get("solution_page_number"):
+            page_idx = max(0, int(problem.get("solution_page_number") or 1) - 1)
+        else:
+            found = _find_solution_page(doc, number)
+            if found is not None:
+                page_idx = found
+            else:
+                page_idx = max(0, int(problem.get("solution_page_number", problem.get("page_number", 1)) or 1) - 1)
+
+        page_idx = min(page_idx, len(doc) - 1)
+        pix = doc[page_idx].get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+        png = pix.tobytes("png")
 
     pix = fitz.Pixmap(png)
     a4_w, a4_h = 595.0, 842.0
@@ -251,8 +335,24 @@ def _output_dir() -> Path:
 
 
 def build_problem_set_from_text(text: str) -> ProblemSetResult:
-    count = _extract_count(text)
-    contests = _extract_contests(text)
+    # Pre-clean the incoming text to avoid accidentally parsing assistant
+    # reply fragments or UI copy (e.g., "I generated...", "Use the download button...")
+    lines = [ln for ln in text.splitlines()]
+    cleaned_lines: list[str] = []
+    for ln in lines:
+        s = ln.strip()
+        # drop single-letter confirmations and very short noise (e.g., 'Y', emoji-only)
+        if len(s) <= 2:
+            continue
+        # drop UI/instructional lines commonly copied from assistant replies
+        if re.search(r"generated\b|use the download|download button|use the download button", s, re.I):
+            break
+        cleaned_lines.append(ln)
+
+    cleaned_text = "\n".join(cleaned_lines).strip() or text
+
+    count = _extract_count(cleaned_text)
+    contests = _extract_contests(cleaned_text)
     all_years = _all_years_map()
 
     if not contests:
@@ -317,9 +417,11 @@ def build_problem_set_from_text(text: str) -> ProblemSetResult:
         sol_written = 0
         for p in rendered:
             try:
-                if p.get("solution_pdf_path"):
-                    _add_solution_page(sol_pdf, p)
-                    sol_written += 1
+                # Try to add a solution page regardless of whether a separate
+                # solution PDF path is present; _add_solution_page will fall
+                # back to the main PDF when appropriate.
+                _add_solution_page(sol_pdf, p)
+                sol_written += 1
             except Exception:
                 continue
         if sol_written > 0:
@@ -347,3 +449,37 @@ def build_problem_set_from_text(text: str) -> ProblemSetResult:
         label=label,
         solutions_url=solutions_url,
     )
+
+
+def build_solutions_from_problems(problems: list[dict]) -> str | None:
+    """Generate a solutions-only PDF from an explicit list of problems.
+
+    Returns the frontend URL path to the generated PDF, or None if nothing was
+    written.
+    """
+    if not problems:
+        return None
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # derive a short label from available contest names
+    safe_contests = "-".join(sorted({p.get("contest", "c").lower() for p in problems})[:3])
+    filename = f"solutions_set_{safe_contests}_{stamp}.pdf"
+    out_path = _output_dir() / filename
+
+    sol_pdf = fitz.open()
+    written = 0
+    try:
+        for p in problems:
+            try:
+                # Attempt to add the solution page; _add_solution_page will
+                # use the solution_pdf_path or fall back to the main pdf_path.
+                _add_solution_page(sol_pdf, p)
+                written += 1
+            except Exception:
+                continue
+        if written == 0:
+            return None
+        sol_pdf.save(str(out_path), deflate=True)
+        return f"/frontend/generated/{filename}"
+    finally:
+        sol_pdf.close()

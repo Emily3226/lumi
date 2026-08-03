@@ -31,7 +31,7 @@ except Exception:
 
 from api.llm_provider import call_cerebras
 from api.agents import _rewrite_user_message
-from api.problem_set_service import build_problem_set_from_text, is_problem_set_request
+from api.problem_set_service import build_problem_set_from_text, is_problem_set_request, build_solutions_from_problems
 from rag.contest_retriever import (
     collection_count,
     get_by_contest_year,
@@ -941,6 +941,10 @@ def detect_intent(text: str, session: dict) -> str:
     if is_negative_contest_request(n):
         return "switch_general"
 
+    # Explicit solutions-set requests (e.g., "generate solutions PDF")
+    if re.search(r"\b(solution set|solutions set|solutions pdf|solution pdf|generate solutions|create solutions|build solutions|download solutions)\b", n):
+        return "solution_set"
+
     if is_problem_set_request(n):
         return "problem_set"
 
@@ -1488,49 +1492,89 @@ def handle_search(text: str, session: dict) -> ContestResult:
 
 
 def handle_browse(text: str, session: dict) -> ContestResult:
-    """Pick and return a random problem from any indexed contest."""
+    """Pick and return a random problem from any indexed contest.
+
+    Prefer a contest mentioned in `text`; otherwise pick a random indexed contest/year.
+    """
     available = list_available_contests()
     if not available:
         return _unavailable_reply()
 
-    # Prefer contests that appear in the user's message, otherwise pick at random
-    contest_obj = None
-    contest = _extract_contest(text)
-    if contest:
+    contest_name = _extract_contest(text)
+
+    def _pick_from(contest: str) -> dict | None:
+        years = []
         for item in available:
-            if item["contest"] == contest:
-                contest_obj = item
+            if item.get("contest") == contest:
+                for y in item.get("years", []):
+                    try:
+                        years.append(int(y))
+                    except Exception:
+                        continue
                 break
-    if contest_obj is None:
-        contest_obj = random.choice(available)
+        if not years:
+            return None
+        chosen_year = random.choice(years)
+        rows = get_by_contest_year(contest, chosen_year, n=30)
+        valid = [r for r in rows if r.get("pdf_path") and r.get("problem_number")]
+        if not valid:
+            valid = rows
+        if not valid:
+            return None
+        candidate = random.choice(valid)
+        full = _get_full_problem(candidate.get("contest"), candidate.get("year"), candidate.get("problem_number"))
+        return full or candidate
 
-    years: list[int] = []
-    for y in contest_obj.get("years", []):
-        try:
-            years.append(int(y))
-        except Exception:
-            continue
+    result = None
+    if contest_name:
+        result = _pick_from(contest_name)
 
-    if not years:
+    if result is None:
+        # pick a random contest and try
+        tries = list(available)
+        random.shuffle(tries)
+        for item in tries:
+            candidate = _pick_from(item.get("contest"))
+            if candidate:
+                result = candidate
+                break
+
+    if not result:
         return handle_search(text, session)
 
-    chosen_year = random.choice(years)
-    rows = get_by_contest_year(contest_obj["contest"], chosen_year, n=30)
-    valid = [r for r in rows if r.get("pdf_path") and r.get("problem_number")]
-    if not valid:
-        valid = rows
-    if not valid:
-        return handle_search(text, session)
-
-    result = random.choice(valid)
-    full = _get_full_problem(contest_obj["contest"], chosen_year, result["problem_number"])
-    result = full or result
     session["active_problem"] = result
     return ContestResult(
         reply="Here's a problem for you:\n\n" + _fmt_problem(result),
         problems=[result],
         intent="browse",
+        active_agent="contest",
     )
+
+
+def handle_solution_set(text: str, session: dict) -> ContestResult:
+    # Prefer existing session matches if available
+    probs = session.get("matches") or ([] if session.get("active_problem") is None else [session.get("active_problem")])
+    if not probs:
+        # Fallback: attempt to parse the text into a problem set and use those problems
+        psr = build_problem_set_from_text(text)
+        probs = psr.problems or []
+
+    sol_url = None
+    if probs:
+        sol_url = build_solutions_from_problems(probs)
+
+    if sol_url:
+        return ContestResult(
+            reply="I generated a solutions PDF for the selected problems.",
+            problems=[],
+            intent="solution_set",
+            active_agent="contest",
+            problem_set_url=None,
+            problem_set_label=None,
+            solutions_url=sol_url,
+        )
+
+    return ContestResult(reply="I couldn't create a solutions PDF for those problems.", problems=[], intent="solution_set", active_agent="contest")
 
 
 def handle_problem_set(text: str, session: dict) -> ContestResult:
@@ -1541,9 +1585,11 @@ def handle_problem_set(text: str, session: dict) -> ContestResult:
             intent="problem_set",
             active_agent="contest",
         )
-
     if result.problems:
         session["active_problem"] = result.problems[0]
+        # Save the full problem list so subsequent 'generate solutions' requests
+        # can produce a solutions PDF for the same set.
+        session["matches"] = result.problems
 
     return ContestResult(
         reply=result.reply,
@@ -1625,6 +1671,8 @@ class ContestAgent:
             return handle_practice(message, session)
         elif intent == "problem_set":
             return handle_problem_set(message, session)
+        elif intent == "solution_set":
+            return handle_solution_set(message, session)
         elif intent == "browse":
             return handle_browse(message, session)
         else:

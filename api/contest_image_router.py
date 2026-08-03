@@ -463,3 +463,61 @@ def _prewarm_one(pdf_path: str, prob_num: int, contest: str, show_solution: bool
         "cropped": True,
         "page": start_loc.page_index,
     }
+
+
+def render_png_cached(target: str, prob_num: int, contest: str, show_solution: bool, scale: float) -> bytes:
+    """Return PNG bytes for the requested crop, using the in-memory render cache.
+
+    This function mirrors the endpoint's behaviour but returns raw PNG bytes
+    (not a JSON response) and populates the `_render_cache` so repeated
+    requests (or batch PDF generation) reuse the cached result.
+    """
+    render_key = (target, prob_num, contest, show_solution, scale)
+    if render_key in _render_cache:
+        entry = _render_cache[render_key]
+        try:
+            return base64.b64decode(entry["image_base64"])
+        except Exception:
+            # fall through to re-render
+            pass
+
+    # Validate the file path
+    if not _safe(target):
+        raise ValueError("Invalid target PDF path")
+
+    doc = _get_doc(target)
+    labels = _get_labels(target, contest)
+    start_loc = labels.get(prob_num)
+
+    if start_loc is None:
+        # Fallback to full-page render (first content page or page index)
+        pages = _content_pages(doc)
+        fallback = pages[min(prob_num - 1, len(pages) - 1)] if pages else 0
+        pix = doc[fallback].get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+        png = pix.tobytes("png")
+        _render_cache[render_key] = {
+            "image_base64": base64.b64encode(png).decode(),
+            "cropped": False,
+            "page": fallback,
+        }
+        return png
+
+    # Find next label
+    sorted_locs = sorted(labels.values(), key=lambda loc: (loc.page_index, loc.y))
+    next_loc = None
+    for loc in sorted_locs:
+        if loc.page_index > start_loc.page_index or (
+            loc.page_index == start_loc.page_index and loc.y > start_loc.y
+        ):
+            next_loc = loc
+            break
+
+    is_last = next_loc is None
+    png = _render_crop(doc, start_loc, next_loc, scale, is_last, is_solution=show_solution)
+
+    _render_cache[render_key] = {
+        "image_base64": base64.b64encode(png).decode(),
+        "cropped": True,
+        "page": start_loc.page_index,
+    }
+    return png

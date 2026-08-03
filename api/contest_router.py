@@ -38,6 +38,7 @@ class ContestChatResponse(BaseModel):
     intent: str
     active_agent: str | None = None
     problem_set_url: str | None = None
+    solutions_url: str | None = None
     problem_set_label: str | None = None
 
 
@@ -66,7 +67,10 @@ def contest_ask(req: ContestChatRequest):
     result = contest_agent.run(req.message, session)
     if result.active_agent:
         session["active_agent"] = result.active_agent
-    if result.problems is not None:
+    # Only update session matches when the handler returns a non-empty problems list.
+    # Some handlers intentionally return an empty list for PDF-only responses;
+    # in that case we must not overwrite the stored session['matches'] set earlier.
+    if result.problems is not None and len(result.problems) > 0:
         session["matches"] = result.problems
     session["messages"].append({"role": "assistant", "content": result.reply})
     session["messages"] = session["messages"][-40:]
@@ -78,6 +82,7 @@ def contest_ask(req: ContestChatRequest):
         intent=result.intent,
         active_agent=result.active_agent,
         problem_set_url=result.problem_set_url,
+        solutions_url=result.solutions_url,
         problem_set_label=result.problem_set_label,
     )
 
