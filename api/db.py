@@ -88,3 +88,10 @@ def ensure_indexes() -> None:
     db["bookings"].create_index("id", unique=True)
     db["bookings"].create_index("created_at")
     db["historical_pairings"].create_index("source_file")
+    # contest_chunks is queried by (contest, year) constantly - get_by_contest_year,
+    # the problem-set builder, and the contest listing all hit it. Without this
+    # every one of those is a collection scan.
+    # NOTE: this is a normal btree index and is unrelated to the Atlas Vector
+    # Search index on `embedding` (VECTOR_INDEX_NAME in rag/contest_retriever.py),
+    # which must be created in the Atlas UI/API - the driver cannot create it.
+    db["contest_chunks"].create_index([("contest", 1), ("year", 1)])

@@ -20,8 +20,10 @@ slower) - you'll see a one-time warning printed when that happens.
 
 from __future__ import annotations
 
+import heapq
 import os
-from typing import Any
+import time
+from typing import Any, Callable
 
 import numpy as np
 
@@ -31,6 +33,33 @@ COLLECTION_NAME = "contest_chunks"
 VECTOR_INDEX_NAME = os.environ.get("CONTEST_VECTOR_INDEX", "contest_vector_index")
 
 _warned_no_index = False
+
+# The contest corpus only changes when scripts/ingest_contests.py runs, but
+# collection_count() and list_available_contests() were being hit on nearly
+# every request - /contest/status alone fires on each page load, and the
+# agent's browse/list/problem-set paths call them again per turn. Each call
+# was a round trip to Atlas (and list_available_contests() was a full
+# collection scan). Cache both for a few minutes; set CONTEST_META_CACHE_TTL=0
+# to disable while re-ingesting.
+_META_CACHE_TTL = float(os.environ.get("CONTEST_META_CACHE_TTL", "300"))
+_meta_cache: dict[str, tuple[float, Any]] = {}
+
+
+def _cached(key: str, produce: Callable[[], Any]) -> Any:
+    if _META_CACHE_TTL <= 0:
+        return produce()
+    now = time.monotonic()
+    hit = _meta_cache.get(key)
+    if hit is not None and (now - hit[0]) < _META_CACHE_TTL:
+        return hit[1]
+    value = produce()
+    _meta_cache[key] = (now, value)
+    return value
+
+
+def invalidate_meta_cache() -> None:
+    """Drop the cached corpus metadata. Call after ingesting new contests."""
+    _meta_cache.clear()
 
 
 def _get_embedding_function():
@@ -43,11 +72,14 @@ def _collection():
 
 
 def collection_count() -> int:
-    try:
-        return _collection().estimated_document_count()
-    except Exception as e:
-        print(f"⚠ MongoDB count error: {e}")
-        return 0
+    def _count() -> int:
+        try:
+            return _collection().estimated_document_count()
+        except Exception as e:
+            print(f"⚠ MongoDB count error: {e}")
+            return 0
+
+    return _cached("count", _count)
 
 
 def add_chunks(chunks: list[dict]) -> None:
@@ -75,6 +107,11 @@ def add_chunks(chunks: list[dict]) -> None:
         doc = {"_id": chunk["chunk_id"], "document": chunk["document"], "embedding": list(map(float, vector))}
         doc.update(chunk["metadata"])
         col.replace_one({"_id": chunk["chunk_id"]}, doc, upsert=True)
+
+    # The corpus just changed, so the cached count/contest list are stale.
+    # Invalidating here (rather than asking every caller to remember) means
+    # ingest scripts and any future writer stay correct for free.
+    invalidate_meta_cache()
 
 
 def _meta_to_result(doc: dict, dist: float | None = None) -> dict:
@@ -136,21 +173,47 @@ def _brute_force_query(query_vec: list[float], n_results: int, where: dict) -> l
         _warned_no_index = True
 
     col = _collection()
-    docs = list(col.find(where))
-    if not docs:
+    q = np.asarray(query_vec, dtype=np.float32)
+    q_norm = float(np.linalg.norm(q)) or 1.0
+
+    # Stream the vectors and keep only the running top-N. The previous version
+    # did list(col.find(where)) - materialising every document, each carrying a
+    # 384-float embedding *and* its full problem/solution text, into Python
+    # objects at once. On the 1GB instance that is enough to OOM the process on
+    # a single query, and this path runs for EVERY contest search whenever the
+    # Atlas vector index is missing. Now memory is O(n_results), not O(corpus).
+    top: list[tuple[float, int, Any]] = []  # min-heap; tie-break on seq
+    seq = 0
+    try:
+        cursor = col.find(where, {"embedding": 1}).batch_size(200)
+        for doc in cursor:
+            emb = doc.get("embedding")
+            if not emb:
+                continue
+            v = np.asarray(emb, dtype=np.float32)
+            if v.size == 0:
+                continue
+            sim = float(np.dot(q, v) / (q_norm * (float(np.linalg.norm(v)) or 1.0)))
+            seq += 1
+            if len(top) < n_results:
+                heapq.heappush(top, (sim, seq, doc["_id"]))
+            elif sim > top[0][0]:
+                heapq.heapreplace(top, (sim, seq, doc["_id"]))
+    except Exception as e:
+        print(f"⚠ MongoDB brute-force scan error: {e}")
         return []
 
-    q = np.array(query_vec, dtype=float)
-    q_norm = np.linalg.norm(q) or 1.0
-    scored = []
-    for d in docs:
-        v = np.array(d.get("embedding", []), dtype=float)
-        if v.size == 0:
-            continue
-        sim = float(np.dot(q, v) / (q_norm * (np.linalg.norm(v) or 1.0)))
-        scored.append((sim, d))
-    scored.sort(key=lambda t: t[0], reverse=True)
-    return [_meta_to_result(d, dist=sim) for sim, d in scored[:n_results]]
+    if not top:
+        return []
+
+    ranked = sorted(top, key=lambda t: t[0], reverse=True)
+    ids = [doc_id for _, _, doc_id in ranked]
+    by_id = {d["_id"]: d for d in col.find({"_id": {"$in": ids}})}
+    return [
+        _meta_to_result(by_id[doc_id], dist=sim)
+        for sim, _, doc_id in ranked
+        if doc_id in by_id
+    ]
 
 
 def query(
@@ -217,16 +280,28 @@ def get_by_contest_year(contest: str, year: int, n: int = 20) -> list[dict]:
 def list_available_contests() -> list[dict]:
     if collection_count() == 0:
         return []
-    try:
-        seen: dict[str, set] = {}
-        for doc in _collection().find({}, {"contest": 1, "year": 1}):
-            c = doc.get("contest", "Unknown")
-            y = str(doc.get("year", "?"))
-            seen.setdefault(c, set()).add(y)
-        return [
-            {"contest": c, "years": sorted(ys, reverse=True), "count": len(ys)}
-            for c, ys in sorted(seen.items())
-        ]
-    except Exception as e:
-        print(f"⚠ MongoDB list error: {e}")
-        return []
+
+    def _list() -> list[dict]:
+        try:
+            # Group server-side instead of streaming every document back just
+            # to read two fields off it. The old version pulled the whole
+            # collection over the wire on every call; this returns one row per
+            # (contest, year) pair.
+            pipeline = [
+                {"$group": {"_id": {"contest": "$contest", "year": "$year"}}},
+            ]
+            seen: dict[str, set] = {}
+            for row in _collection().aggregate(pipeline):
+                key = row.get("_id") or {}
+                c = key.get("contest") or "Unknown"
+                y = str(key.get("year", "?"))
+                seen.setdefault(c, set()).add(y)
+            return [
+                {"contest": c, "years": sorted(ys, reverse=True), "count": len(ys)}
+                for c, ys in sorted(seen.items())
+            ]
+        except Exception as e:
+            print(f"⚠ MongoDB list error: {e}")
+            return []
+
+    return _cached("contests", _list)
