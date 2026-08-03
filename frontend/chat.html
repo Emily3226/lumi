@@ -139,6 +139,9 @@
       button{background:var(--accent);color:white;border:none;padding:10px 18px;border-radius:14px;cursor:pointer;font-size:14px;font-weight:600;font-family:var(--font-body)}
       button:hover{background:var(--accent-deep)}
       button:active{transform:translateY(1px)}
+      button:disabled{background:var(--muted);cursor:not-allowed;opacity:0.7}
+      button:disabled:hover{background:var(--muted)}
+      button:disabled:active{transform:none}
       @media(prefers-reduced-motion: reduce){ *{transition:none !important} }
       @media(max-width:640px){.container{padding:16px 12px 24px}}
 
@@ -307,6 +310,12 @@
         wrap.appendChild(role === 'user' ? bub : av);
         wrap.appendChild(role === 'user' ? av : bub);
         messagesEl.appendChild(wrap);
+        // Anything appended while Lumi is still thinking (e.g. the "Switched
+        // to X agent" notice) would otherwise land *below* the dots and strand
+        // them mid-conversation. Keep the indicator last.
+        if (typingEl && typingEl.parentNode === messagesEl) {
+          messagesEl.appendChild(typingEl);
+        }
         messagesEl.scrollTop = messagesEl.scrollHeight;
       }
 
@@ -499,6 +508,11 @@
       }
 
       async function sendSlotBooking(matchNumber, slotId, slotLabel, mentorName) {
+        // Booking drives the same shared indicator as send(), so it takes the
+        // same in-flight lock - otherwise a slot click mid-request clears the
+        // dots out from under the pending chat turn.
+        if (inFlight) return;
+        setBusy(true);
         showTyping('match');
         try {
           const res1 = await fetchWithTimeout(`${API}/chat`, {
@@ -534,6 +548,8 @@
         } catch(e) {
           hideTyping();
           addMsg('bot', `Could not reach the assistant. Is the API reachable at ${API}?`);
+        } finally {
+          setBusy(false);
         }
       }
 
@@ -685,16 +701,35 @@
       }
 
       // ── Send ────────────────────────────────────────────────────────────────
+      // One request at a time. showTyping()/hideTyping() share a single global
+      // indicator, so overlapping requests used to fight over it: the first
+      // reply to land called hideTyping() and the dots vanished while the other
+      // requests were still running. Serialising sends keeps the indicator
+      // honest and stops double-submits from the button and the Enter key.
+      let inFlight = false;
+      function setBusy(busy) {
+        inFlight = busy;
+        const btn = document.getElementById('send');
+        btn.disabled = busy;
+        btn.textContent = busy ? 'Sending…' : 'Send';
+      }
+
       async function send() {
+        if (inFlight) return;
         const text = inputEl.value.trim();
         if (!text) return;
         inputEl.value = '';
         addMsg('user', text);
 
-        if (selectedAgent === 'contest') {
-          await sendContest(text);
-        } else {
-          await sendChat(text);
+        setBusy(true);
+        try {
+          if (selectedAgent === 'contest') {
+            await sendContest(text);
+          } else {
+            await sendChat(text);
+          }
+        } finally {
+          setBusy(false);
         }
       }
 
