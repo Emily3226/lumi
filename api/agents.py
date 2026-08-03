@@ -390,6 +390,14 @@ def _rewrite_user_message(message: str, session: dict[str, Any], forced_agent: s
 
     cleaned_message = str(payload.get("cleaned_message") or clean_message).strip() or clean_message
     formatted_prompt = str(payload.get("formatted_prompt") or fallback_prompt).strip() or fallback_prompt
+    # Ensure contest names are preserved: if the LLM rewrite dropped a contest
+    # but the original message mentioned one, append the contest name so downstream
+    # intent detectors still see it.
+    if not re.search(r"\b(euclid|fryer|galois|hypatia|gauss\s*[78]?|pascal|cayley|fermat|cimc|csmc)\b", cleaned_message, re.I):
+        m = re.search(r"\b(euclid|fryer|galois|hypatia|gauss\s*[78]?|pascal|cayley|fermat|cimc|csmc)\b", clean_message, re.I)
+        if m:
+            # append the found contest name to the cleaned message to preserve intent
+            cleaned_message = (cleaned_message + " " + m.group(0)).strip()
 
     return PromptRewriteResult(
         target_agent=target_agent,

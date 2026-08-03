@@ -15,6 +15,16 @@ _CONTEST_RE = re.compile(
     r"\b(euclid|fryer|galois|hypatia|gauss\s*[78]?|pascal|cayley|fermat|cimc|csmc)\b",
     re.I,
 )
+# Batch PDF generation renders many pages in one request, so it trades a
+# little resolution for speed and peak memory. The interactive single-problem
+# view (api/contest_image_router.py) still renders at full scale.
+BATCH_RENDER_SCALE = 1.5
+
+# Largest page span a single cropped solution may cover before we give up and
+# render one page instead. A real solution runs to the next label, usually on
+# the same page or the next one; anything wider means label detection failed.
+_MAX_CROP_SPAN_PAGES = 1
+
 _COUNT_RE = re.compile(r"\b(\d{1,2})\s+(?:problems?|questions?)\b", re.I)
 # Looser variant used only for detecting problem-set *intent*: allows a few
 # words (e.g. a contest name) between the number and "problems"/"questions",
@@ -231,8 +241,58 @@ def _add_problem_page(pdf: fitz.Document, problem: dict, scale: float = 2.0) -> 
     page.insert_image(rect, stream=png)
 
 
+def _find_solution_page(doc: fitz.Document, prob_num: int) -> int | None:
+    """Scan `doc` for the page holding problem `prob_num`'s solution.
+
+    Used when the solution PDF has no detectable problem labels, so we can't
+    crop precisely but can at least land on the right page instead of trusting
+    a possibly-stale solution_page_number.
+    """
+    check_pages = min(len(doc), 6)
+    combined = ""
+    for i in range(check_pages):
+        try:
+            combined += "\n" + (doc[i].get_text() or "")
+        except Exception:
+            continue
+    is_solution_doc = any(
+        k in combined.lower() for k in ("solution", "solutions", "answer", "proof")
+    )
+
+    pat_explicit = re.compile(
+        rf"(?m)(?:^|\n)\s*(?:Solution|Solutions|Answer|Proof)[^\n]*\b{prob_num}\b", re.I
+    )
+    pat_numbered = re.compile(rf"(?m)(?:^|\n)\s*Solution\s+{prob_num}\b", re.I)
+    pat_problem = re.compile(rf"(?m)(?:^|\n)\s*Problem\s+{prob_num}\b", re.I)
+    pat_item = re.compile(rf"(?m)(?:^|\n)\s*{prob_num}\.\s*\(a\)", re.I)
+    pat_line = re.compile(rf"(?m)(?:^|\n)\s*{prob_num}\.\s*$", re.I)
+
+    for i in range(len(doc)):
+        try:
+            txt = doc[i].get_text() or ""
+        except Exception:
+            continue
+        if pat_numbered.search(txt) or pat_explicit.search(txt):
+            return i
+        # Bare "Problem N" / "N. (a)" headings are only trustworthy in a doc
+        # that already looks like a solutions booklet - in a contest paper
+        # they'd match the problem itself.
+        if is_solution_doc and (
+            pat_problem.search(txt) or pat_item.search(txt) or pat_line.search(txt)
+        ):
+            return i
+    return None
+
+
 def _add_solution_page(pdf: fitz.Document, problem: dict, scale: float = 2.0) -> None:
-    """Insert the official solution page for `problem` into `pdf` if available."""
+    """Insert the official solution page for `problem` into `pdf` if available.
+
+    Prefers a precise per-problem crop (same treatment as the interactive
+    "Show solution" view) so a solutions PDF page holds one solution rather
+    than whichever slice of the booklet happened to share a page. Falls back
+    to locating the page by text, then to solution_page_number, rendering the
+    whole page in both cases.
+    """
     contest = problem.get("contest", "Contest")
     year = int(problem.get("year", 0) or 0)
     number = int(problem.get("problem_number", 0) or 0)
@@ -242,11 +302,42 @@ def _add_solution_page(pdf: fitz.Document, problem: dict, scale: float = 2.0) ->
         raise ValueError("No solution PDF path for problem")
 
     doc = _get_doc(sol_pdf_path)
-    page_idx = max(0, int(problem.get("solution_page_number", problem.get("page_number", 1)) or 1) - 1)
-    page_idx = min(page_idx, len(doc) - 1)
-    raw_pix = doc[page_idx].get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
-    png = raw_pix.tobytes("png")
-    raw_pix = None  # release the raw page buffer as soon as we have the PNG bytes
+    png = None
+
+    try:
+        labels = _get_labels(sol_pdf_path, contest)
+        start_loc = labels.get(number)
+    except Exception:
+        start_loc = None
+
+    if start_loc is not None:
+        next_loc = _next_label(labels, start_loc)
+        # With no following label, _render_crop(is_solution=True) extends the
+        # region to the end of the document and stitches every page into one
+        # image. That's fine for the interactive one-problem-at-a-time view,
+        # but here the result gets scaled onto a single A4 page - a 20-page
+        # stitch would be illegible (and briefly huge in memory). Solution
+        # booklets routinely yield partial label detection, so only crop when
+        # the span is genuinely small; otherwise fall back to a page render.
+        span_pages = (
+            next_loc.page_index - start_loc.page_index
+            if next_loc is not None
+            else (len(doc) - 1) - start_loc.page_index
+        )
+        if span_pages <= _MAX_CROP_SPAN_PAGES:
+            try:
+                png = _render_crop(doc, start_loc, next_loc, scale, is_last=next_loc is None, is_solution=True)
+            except Exception:
+                png = None  # fall through to a whole-page render
+
+    if png is None:
+        page_idx = _find_solution_page(doc, number)
+        if page_idx is None:
+            page_idx = max(0, int(problem.get("solution_page_number", problem.get("page_number", 1)) or 1) - 1)
+        page_idx = min(page_idx, len(doc) - 1)
+        raw_pix = doc[page_idx].get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
+        png = raw_pix.tobytes("png")
+        raw_pix = None  # release the raw page buffer as soon as we have the PNG bytes
 
     pix = fitz.Pixmap(png)
     a4_w, a4_h = 595.0, 842.0
@@ -313,7 +404,7 @@ def build_problem_set_from_text(text: str) -> ProblemSetResult:
     try:
         for p in selected:
             try:
-                _add_problem_page(pdf, p)
+                _add_problem_page(pdf, p, scale=BATCH_RENDER_SCALE)
                 written += 1
                 rendered.append(p)
             except Exception:
@@ -355,7 +446,7 @@ def build_problem_set_from_text(text: str) -> ProblemSetResult:
                 )
                 continue
             try:
-                _add_solution_page(sol_pdf, p)
+                _add_solution_page(sol_pdf, p, scale=BATCH_RENDER_SCALE)
                 sol_written += 1
             except Exception as e:
                 print(

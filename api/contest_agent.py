@@ -1488,48 +1488,65 @@ def handle_search(text: str, session: dict) -> ContestResult:
 
 
 def handle_browse(text: str, session: dict) -> ContestResult:
-    """Pick and return a random problem from any indexed contest."""
+    """Pick and return a random problem from any indexed contest.
+
+    Prefer a contest mentioned in `text`; otherwise pick a random indexed
+    contest/year. If a contest turns out to have no usable problems, try the
+    other indexed contests before giving up and falling back to search - a
+    single unlucky pick shouldn't look like "nothing is indexed".
+    """
     available = list_available_contests()
     if not available:
         return _unavailable_reply()
 
-    # Prefer contests that appear in the user's message, otherwise pick at random
-    contest_obj = None
-    contest = _extract_contest(text)
-    if contest:
+    def _pick_from(contest: str) -> dict | None:
+        years: list[int] = []
         for item in available:
-            if item["contest"] == contest:
-                contest_obj = item
+            if item.get("contest") == contest:
+                for y in item.get("years", []):
+                    try:
+                        years.append(int(y))
+                    except Exception:
+                        continue
                 break
-    if contest_obj is None:
-        contest_obj = random.choice(available)
+        if not years:
+            return None
 
-    years: list[int] = []
-    for y in contest_obj.get("years", []):
-        try:
-            years.append(int(y))
-        except Exception:
-            continue
+        chosen_year = random.choice(years)
+        rows = get_by_contest_year(contest, chosen_year, n=30)
+        valid = [r for r in rows if r.get("pdf_path") and r.get("problem_number")]
+        if not valid:
+            valid = rows
+        if not valid:
+            return None
 
-    if not years:
+        candidate = random.choice(valid)
+        full = _get_full_problem(contest, chosen_year, candidate.get("problem_number"))
+        return full or candidate
+
+    result = None
+    contest_name = _extract_contest(text)
+    if contest_name:
+        result = _pick_from(contest_name)
+
+    if result is None:
+        tries = list(available)
+        random.shuffle(tries)
+        for item in tries:
+            candidate = _pick_from(item.get("contest"))
+            if candidate:
+                result = candidate
+                break
+
+    if not result:
         return handle_search(text, session)
 
-    chosen_year = random.choice(years)
-    rows = get_by_contest_year(contest_obj["contest"], chosen_year, n=30)
-    valid = [r for r in rows if r.get("pdf_path") and r.get("problem_number")]
-    if not valid:
-        valid = rows
-    if not valid:
-        return handle_search(text, session)
-
-    result = random.choice(valid)
-    full = _get_full_problem(contest_obj["contest"], chosen_year, result["problem_number"])
-    result = full or result
     session["active_problem"] = result
     return ContestResult(
         reply="Here's a problem for you:\n\n" + _fmt_problem(result),
         problems=[result],
         intent="browse",
+        active_agent="contest",
     )
 
 
