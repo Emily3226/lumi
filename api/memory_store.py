@@ -109,9 +109,12 @@ _memory_cache: dict[str, dict[str, Any]] = {}
 
 
 def _get_memory(session_id: str | None) -> dict[str, Any]:
+    # Always re-read from disk rather than trusting a cached in-memory copy -
+    # see the identical comment in api/session_store.py:get_session(). With
+    # multiple uvicorn workers, a stale per-process cache can silently hide
+    # facts/examples another worker already persisted for this session.
     key = session_id or ""
-    if key not in _memory_cache:
-        _memory_cache[key] = load_memory(session_id)
+    _memory_cache[key] = load_memory(session_id)
     return _memory_cache[key]
 
 

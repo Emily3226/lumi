@@ -137,8 +137,15 @@ def load_session(session_id: str) -> dict[str, Any]:
 
 
 def get_session(session_id: str) -> dict[str, Any]:
-    if session_id not in _session_cache:
-        _session_cache[session_id] = load_session(session_id)
+    # Always re-read from disk rather than trusting a cached in-memory copy.
+    # With `--workers 2` in production, each worker is a separate process; if
+    # consecutive turns of the same conversation land on different workers (a
+    # normal occurrence with multiple workers, no session affinity), a stale
+    # in-memory copy would silently look like a brand-new session and reset
+    # the whole flow (e.g. mid-booking state getting wiped). The per-session
+    # file is small, so re-reading it on every call is cheap and keeps every
+    # worker seeing whichever worker wrote last.
+    _session_cache[session_id] = load_session(session_id)
     return _session_cache[session_id]
 
 
