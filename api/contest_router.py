@@ -14,7 +14,7 @@ from pydantic import BaseModel
 
 from api.contest_agent import contest_agent
 from api.memory_store import observe_turn
-from api.session_store import get_session, save_sessions, sessions
+from api.session_store import get_session, save_session
 from rag.contest_retriever import (
     collection_count,
     get_by_contest_year,
@@ -71,7 +71,7 @@ def contest_ask(req: ContestChatRequest):
         session["matches"] = result.problems
     session["messages"].append({"role": "assistant", "content": result.reply})
     session["messages"] = session["messages"][-40:]
-    save_sessions(sessions)
+    save_session(session_id)
     observe_turn(session_id, req.message, result.reply, result.active_agent or "contest")
     return ContestChatResponse(
         reply=result.reply,

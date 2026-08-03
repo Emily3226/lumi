@@ -141,6 +141,19 @@
       button:active{transform:translateY(1px)}
       @media(prefers-reduced-motion: reduce){ *{transition:none !important} }
       @media(max-width:640px){.container{padding:16px 12px 24px}}
+
+      /* Typing indicator */
+      .typing-dots{display:inline-flex;align-items:center;gap:4px;padding:2px 4px}
+      .typing-dots span{width:6px;height:6px;border-radius:50%;background:var(--accent);opacity:0.35;animation:typing-bounce 1.1s infinite ease-in-out}
+      .typing-dots span:nth-child(2){animation-delay:0.15s}
+      .typing-dots span:nth-child(3){animation-delay:0.3s}
+      @keyframes typing-bounce{
+        0%, 60%, 100%{transform:translateY(0);opacity:0.35}
+        30%{transform:translateY(-4px);opacity:0.9}
+      }
+      @media(prefers-reduced-motion: reduce){
+        .typing-dots span{animation:none;opacity:0.7}
+      }
     </style>
   </head>
   <body>
@@ -220,6 +233,19 @@
       const SESSION_KEY = 'lumi_session_id';
       const SESSION = localStorage.getItem(SESSION_KEY) || ('session_' + Math.random().toString(36).slice(2, 9));
       localStorage.setItem(SESSION_KEY, SESSION);
+      // Wraps fetch with a timeout so a hung/overloaded backend fails fast
+      // with a clear message instead of leaving the typing indicator spinning
+      // forever (the backend's own LLM call already times out around 30s).
+      async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          return await fetch(url, { ...options, signal: controller.signal });
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
       const messagesEl = document.getElementById('messages');
       const inputEl = document.getElementById('input');
       let selectedAgent = 'general';
@@ -286,6 +312,32 @@
 
       function escHtml(s) {
         return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      }
+
+      // ── Typing indicator ────────────────────────────────────────────────────
+      let typingEl = null;
+      function showTyping(avatarType) {
+        hideTyping();
+        const wrap = document.createElement('div');
+        wrap.className = 'msg bot';
+        const av = document.createElement('div');
+        const effectiveAvatar = avatarType || 'general';
+        av.className = 'avatar ' + effectiveAvatar;
+        av.innerHTML = AGENT_ICONS[effectiveAvatar] || AGENT_ICONS.general;
+        const bub = document.createElement('div');
+        bub.className = 'bubble';
+        bub.innerHTML = '<div class="typing-dots" role="status" aria-label="Lumi is thinking"><span></span><span></span><span></span></div>';
+        wrap.appendChild(av);
+        wrap.appendChild(bub);
+        messagesEl.appendChild(wrap);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+        typingEl = wrap;
+      }
+      function hideTyping() {
+        if (typingEl) {
+          typingEl.remove();
+          typingEl = null;
+        }
       }
 
       // ── Mentor match rendering ──────────────────────────────────────────────
@@ -362,7 +414,7 @@
         picker.style.display = 'block';
         wrap.innerHTML = '<div class="slot-loading">Loading schedule…</div>';
         try {
-          const res = await fetch(`${API}/mentors/${encodeURIComponent(mentorName)}/slots`);
+          const res = await fetchWithTimeout(`${API}/mentors/${encodeURIComponent(mentorName)}/slots`);
           const slots = await res.json();
           if (!Array.isArray(slots) || slots.length === 0) {
             wrap.innerHTML = '<p style="font-size:13px;color:#64748b;padding:8px 0">No time slots available yet.</p>';
@@ -447,28 +499,32 @@
       }
 
       async function sendSlotBooking(matchNumber, slotId, slotLabel, mentorName) {
+        showTyping('match');
         try {
-          const res1 = await fetch(`${API}/chat`, {
+          const res1 = await fetchWithTimeout(`${API}/chat`, {
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({session_id: SESSION, message: `book ${matchNumber}`, forced_agent: 'match'}),
           });
           const d1 = await res1.json();
+          hideTyping();
           addMsg('bot', d1.reply || '', d1.active_agent || 'match');
           updateState(d1);
 
           if (d1.state === 'awaiting_slot_selection') {
             // Fetch the slots for this mentor to find which number our chosen slot is
-            const slotsRes = await fetch(`${API}/mentors/${encodeURIComponent(mentorName)}/slots`);
+            const slotsRes = await fetchWithTimeout(`${API}/mentors/${encodeURIComponent(mentorName)}/slots`);
             const slots = await slotsRes.json();
             const slotIndex = Array.isArray(slots) ? slots.findIndex(s => s.id === slotId) : -1;
             const slotNum = slotIndex >= 0 ? slotIndex + 1 : 1;
 
             addMsg('user', `${slotNum} — ${slotLabel}`);
-            const res2 = await fetch(`${API}/chat`, {
+            showTyping('match');
+            const res2 = await fetchWithTimeout(`${API}/chat`, {
               method: 'POST', headers: {'Content-Type':'application/json'},
               body: JSON.stringify({session_id: SESSION, message: String(slotNum), forced_agent: 'match'}),
             });
             const d2 = await res2.json();
+            hideTyping();
             addMsg('bot', d2.reply || '', d2.active_agent || 'match');
             updateState(d2);
             renderMatches(d2.matches, d2);
@@ -476,6 +532,7 @@
             renderMatches(d1.matches, d1);
           }
         } catch(e) {
+          hideTyping();
           addMsg('bot', `Could not reach the assistant. Is the API reachable at ${API}?`);
         }
       }
@@ -555,7 +612,7 @@
             show_solution: showSolution,
             solution_pdf_path: problem.solution_pdf_path || '',
           });
-          const res = await fetch(`${API}/contest/page-image?${params}`);
+          const res = await fetchWithTimeout(`${API}/contest/page-image?${params}`);
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           const data = await res.json();
           wrap.innerHTML = `<img src="data:image/png;base64,${data.image_base64}" alt="Contest problem page" />`;
@@ -581,7 +638,7 @@
       // ── Contest status on load ──────────────────────────────────────────────
       async function loadContestStatus() {
         try {
-          const res = await fetch(`${API}/contest/status`);
+          const res = await fetchWithTimeout(`${API}/contest/status`);
           const data = await res.json();
           if (data.indexed && data.contests && data.contests.length) {
             const chips = document.getElementById('contest-chips');
@@ -643,13 +700,15 @@
 
       async function sendChat(text) {
         document.getElementById('contest-panel').style.display = 'none';
+        const effectiveAgent = activeChatMode === 'match' ? 'match' : selectedAgent;
+        showTyping(effectiveAgent);
         try {
-          const effectiveAgent = activeChatMode === 'match' ? 'match' : selectedAgent;
-          const res = await fetch(`${API}/chat`, {
+          const res = await fetchWithTimeout(`${API}/chat`, {
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({session_id: SESSION, message: text, forced_agent: effectiveAgent}),
           });
           const data = await res.json();
+          hideTyping();
           addMsg('bot', data.reply || 'No reply.', data.active_agent || effectiveAgent);
           const booking = data.booking_state || 'none';
           const matchFlowActive = data.state === 'awaiting_match_details' || data.state === 'showing_results' || data.state === 'awaiting_booking_name' || booking === 'needs_grade' || booking === 'needs_subject' || booking === 'needs_grade_and_subject' || booking === 'search_results' || booking === 'awaiting_name';
@@ -668,18 +727,21 @@
             renderProblemSetDownload(data.problem_set_url, data.problem_set_label, data.solutions_url);
           }
         } catch (e) {
+          hideTyping();
           addMsg('bot', `Could not reach the assistant. Is the API reachable at ${API}?`);
         }
       }
 
       async function sendContest(text) {
         document.getElementById('results-panel').style.display = 'none';
+        showTyping('contest');
         try {
-          const res = await fetch(`${API}/contest/ask`, {
+          const res = await fetchWithTimeout(`${API}/contest/ask`, {
             method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({message: text, session_id: SESSION}),
           });
           const data = await res.json();
+          hideTyping();
           addMsg('bot', data.reply || 'No reply.', 'contest');
           if (data.active_agent && data.active_agent !== selectedAgent) {
             applySelectedAgent(data.active_agent, false);
@@ -703,6 +765,7 @@
             clearContestDisplay();
           }
         } catch (e) {
+          hideTyping();
           addMsg('bot', `Could not reach the assistant. Is the API reachable at ${API}?`, 'contest');
         }
       }
