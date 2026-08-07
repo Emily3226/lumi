@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(kill 1216)",
+      "Bash(nohup ./.venv/Scripts/python.exe -m uvicorn api.main:app --port 8001)",
+      "Bash(echo \"restarted pid $!\")",
+      "Bash(curl -sS -m 90 -X POST http://127.0.0.1:8001/match -H \"Content-Type: application/json\" -d '{\"mentee_name\":\"Test Kid\",\"mentee_grade\":9,\"mentee_subject\":\"math\"}')",
+      "Bash(tasklist //FI \"IMAGENAME eq python.exe\")"
+    ]
+  }
+}

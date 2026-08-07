@@ -72,7 +72,7 @@ class ONNXEmbedder:
         archive_path = self.download_path / ARCHIVE_FILENAME
 
         if not _sha256_matches(str(archive_path), MODEL_SHA256):
-            print(f"⬇ Downloading {MODEL_NAME} ONNX model (~90MB, one-time)...")
+            print(f"Downloading {MODEL_NAME} ONNX model (~90MB, one-time)...")
             last_err: Exception | None = None
             for attempt in range(3):
                 try:

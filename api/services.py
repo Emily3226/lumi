@@ -83,6 +83,22 @@ def list_available_mentors() -> list[dict]:
     return rows
 
 
+def _currently_available_mentor_names() -> set[str]:
+    """Live snapshot of who's actually available right now.
+
+    The retriever's candidate pool is a cached, in-process copy of mentor
+    profiles (rebuilt only when the process restarts, since it involves
+    re-embedding every profile) - so a mentor booked *after* that cache was
+    built would still show up as a match candidate otherwise. This is a
+    cheap, no-embedding query to filter those back out on every request.
+    """
+    db = get_db()
+    return {
+        doc["name"]
+        for doc in db["mentors"].find({"available": 1}, {"_id": 0, "name": 1})
+    }
+
+
 def match_mentors(
     mentee_name: str,
     query_text: str,
@@ -95,6 +111,8 @@ def match_mentors(
 
     # Increase retriever recall to give rerankers more options
     candidates = get_retriever().retrieve(query, grade_value, top_k=max(top_k * 3, 10))
+    available_now = _currently_available_mentor_names()
+    candidates = [c for c in candidates if c.get("name") in available_now]
     mentee = {
         "name": mentee_name,
         "grade": grade_value,
