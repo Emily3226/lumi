@@ -21,6 +21,8 @@ domain in the Resend dashboard.
 
 from __future__ import annotations
 
+from api.env import load_dotenv_once
+
 import json
 import logging
 import os
@@ -35,42 +37,11 @@ RESEND_API_URL = "https://api.resend.com/emails"
 DEFAULT_FROM_EMAIL = "Auxilium Mentorship <onboarding@resend.dev>"
 
 
-def _load_dotenv_file() -> None:
-    """Best-effort .env loader so this module works standalone too."""
-    repo_root = Path(__file__).resolve().parents[1]
-    env_paths = [repo_root / ".env", repo_root / ".venv" / ".env"]
-
-    for env_path in env_paths:
-        if not env_path.exists():
-            continue
-
-        try:
-            lines = env_path.read_text(encoding="utf-8").splitlines()
-        except OSError:
-            continue
-
-        for raw_line in lines:
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if line.startswith("export "):
-                line = line[len("export "):].strip()
-            if "=" not in line:
-                continue
-
-            key, value = line.split("=", 1)
-            key = key.strip()
-            value = value.strip()
-            if not key:
-                continue
-
-            if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-                value = value[1:-1]
-
-            os.environ[key] = value
-
-
-_load_dotenv_file()
+# NOTE: this module used to carry its own .env loader doing an unconditional
+# os.environ[key] = value, which overrode variables set in the real deployment
+# environment with whatever .env was checked out. There were four such copies;
+# they now all defer to api/env.py, which fills in only unset variables.
+load_dotenv_once()
 
 
 def _credentials() -> tuple[str, str] | None:

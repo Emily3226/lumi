@@ -14,6 +14,7 @@ from typing import Any
 from langchain_core.runnables import RunnableBranch, RunnableLambda
 import requests
 
+from api.env import load_dotenv_once
 from api.services import book_pairing_in_db, get_mentor_slots, list_available_mentors, match_mentors
 from api.memory_store import get_memory_context, clear_session_memory
 from api.email_service import send_booking_confirmation
@@ -33,44 +34,13 @@ MENTOR_LIST_LIMIT = 3
 logger = logging.getLogger(__name__)
 
 
-def _load_dotenv_file() -> None:
-    env_path = Path(__file__).resolve().parents[1] / ".env"
-    if not env_path.exists():
-        return
-
-    try:
-        lines = env_path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return
-
-    for raw_line in lines:
-        line = raw_line.strip()
-        if not line or line.startswith("#") or line.startswith("export "):
-            if line.startswith("export "):
-                line = line[len("export "):].strip()
-            else:
-                continue
-
-        if "=" not in line:
-            continue
-
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip()
-        if not key:
-            continue
-
-        current_value = os.environ.get(key, "")
-        if current_value.strip():
-            continue
-
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-            value = value[1:-1]
-
-        os.environ[key] = value
-
-
-_load_dotenv_file()
+# NOTE: this module used to carry its OWN copy of a .env loader that did an
+# unconditional os.environ[key] = value. Because api.agents is imported on
+# every request path, that copy silently overrode variables set in the real
+# deployment environment with whatever .env happened to be checked out - and
+# it undid the same fix already applied in api/llm_provider.py. Use the shared
+# loader in api/env.py instead, which fills in only variables that are unset.
+load_dotenv_once()
 
 CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "").strip()
 CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "llama3.1-8b").strip() or "llama3.1-8b"

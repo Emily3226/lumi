@@ -119,6 +119,7 @@ def _resolve_env(name: str, default: str = "") -> str:
 
 PROVIDERS: dict[str, dict[str, str]] = {
     "gemini": {
+        "min_tokens": "700",
         "key_env": "GEMINI_API_KEY",
         "model_env": "GEMINI_MODEL",
         "base_url_env": "GEMINI_BASE_URL",
@@ -131,6 +132,7 @@ PROVIDERS: dict[str, dict[str, str]] = {
         "default_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
     },
     "groq": {
+        "min_tokens": "700",
         "key_env": "GROQ_API_KEY",
         "model_env": "GROQ_MODEL",
         "base_url_env": "GROQ_BASE_URL",
@@ -141,6 +143,7 @@ PROVIDERS: dict[str, dict[str, str]] = {
         "default_base_url": "https://api.groq.com/openai/v1",
     },
     "cerebras": {
+        "min_tokens": "700",
         "key_env": "CEREBRAS_API_KEY",
         "model_env": "CEREBRAS_MODEL",
         "base_url_env": "CEREBRAS_BASE_URL",
@@ -264,6 +267,17 @@ def call_llm(
             break
 
         api_key, model, base_url = _provider_config(name)
+
+        # Reasoning models (Gemini 3 Flash, gpt-oss-120b) spend "thinking"
+        # tokens that count against max_tokens but never appear in the reply.
+        # Measured overhead is ~300-400 tokens, so the small budgets callers
+        # use for short tasks (100 for an intro line, 200 for small talk, 250
+        # for the prompt rewrite) get consumed entirely by thinking and come
+        # back truncated - or empty with finish_reason="length". Floor the
+        # budget so short prompts still leave room for an actual answer.
+        floor = int(PROVIDERS[name].get("min_tokens") or 0)
+        effective_max = max(max_tokens, floor)
+
         try:
             response = requests.post(
                 f"{base_url.rstrip('/')}/chat/completions",
@@ -271,7 +285,7 @@ def call_llm(
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
-                json=build_payload(messages, model, max_tokens=max_tokens, temperature=temperature),
+                json=build_payload(messages, model, max_tokens=effective_max, temperature=temperature),
                 timeout=remaining,
             )
         except Exception as exc:  # network error / timeout - try the next provider
