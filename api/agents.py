@@ -887,8 +887,12 @@ class MentorTaskAgents:
         # Natural-language intent switches: if the user asks for a mentor or contest help, switch modes
         if not is_negative_match_request(message) and is_match_request(message):
             session["active_agent"] = "match"
-            session["pending_match_step"] = "grade"
-            session["state"] = "awaiting_match_details"
+            # Use the same full reset as every other entry into the match
+            # flow (_reset_match_flow), not just the 3 fields this branch
+            # used to set - otherwise leftover subject/grade/query_text from
+            # an earlier, unrelated match search silently survives and gets
+            # treated as already-answered, skipping the question for it.
+            self._reset_match_flow(session)
             return AgentResult(
                 reply=("Switched to the Match agent.\n\nWhat grade is the mentee in?"),
                 state="awaiting_match_details",
