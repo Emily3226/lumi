@@ -14,6 +14,7 @@ from typing import Any
 from langchain_core.runnables import RunnableBranch, RunnableLambda
 import requests
 
+from api.env import load_dotenv_once
 from api.services import book_pairing_in_db, get_mentor_slots, list_available_mentors, match_mentors
 from api.memory_store import get_memory_context, clear_session_memory
 from api.email_service import send_booking_confirmation
@@ -33,44 +34,13 @@ MENTOR_LIST_LIMIT = 3
 logger = logging.getLogger(__name__)
 
 
-def _load_dotenv_file() -> None:
-    env_path = Path(__file__).resolve().parents[1] / ".env"
-    if not env_path.exists():
-        return
-
-    try:
-        lines = env_path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return
-
-    for raw_line in lines:
-        line = raw_line.strip()
-        if not line or line.startswith("#") or line.startswith("export "):
-            if line.startswith("export "):
-                line = line[len("export "):].strip()
-            else:
-                continue
-
-        if "=" not in line:
-            continue
-
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip()
-        if not key:
-            continue
-
-        current_value = os.environ.get(key, "")
-        if current_value.strip():
-            continue
-
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-            value = value[1:-1]
-
-        os.environ[key] = value
-
-
-_load_dotenv_file()
+# NOTE: this module used to carry its OWN copy of a .env loader that did an
+# unconditional os.environ[key] = value. Because api.agents is imported on
+# every request path, that copy silently overrode variables set in the real
+# deployment environment with whatever .env happened to be checked out - and
+# it undid the same fix already applied in api/llm_provider.py. Use the shared
+# loader in api/env.py instead, which fills in only variables that are unset.
+load_dotenv_once()
 
 CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "").strip()
 CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "llama3.1-8b").strip() or "llama3.1-8b"
@@ -287,6 +257,16 @@ def _extract_llm_text(data: dict[str, Any]) -> str | None:
                                 text_parts.append(text)
                     if text_parts:
                         return "".join(text_parts).strip()
+                # Reasoning models (e.g. Cerebras gpt-oss-120b) put their
+                # chain-of-thought in `reasoning` and the answer in `content`.
+                # If the token budget runs out mid-thought the response comes
+                # back with finish_reason="length", a populated `reasoning`,
+                # and NO `content` - previously that returned None and the
+                # caller silently fell back as though the LLM were down. Use
+                # the reasoning text rather than losing the turn entirely.
+                reasoning = choice_message.get("reasoning")
+                if isinstance(reasoning, str) and reasoning.strip():
+                    return reasoning.strip()
 
     candidates = data.get("candidates")
     if isinstance(candidates, list) and candidates:
@@ -311,6 +291,44 @@ def _strip_code_fences(text: str) -> str:
     return trimmed.strip()
 
 
+def _needs_llm_rewrite(message: str) -> bool:
+    """Whether `message` is worth spending an LLM round trip to rewrite.
+
+    The rewrite exists to normalise messy free-form requests and pick a target
+    agent. Most turns in a real conversation are not that: slot picks ("1"),
+    confirmations ("yes"), a bare grade ("10"), greetings, agent switches and
+    help/list commands are all resolved downstream by the regex classifiers in
+    this module, which never look at the rewritten text. Paying for a model to
+    restate them costs latency on every such turn and burns free-tier request
+    quota that the substantive turns need.
+
+    Deliberately conservative: every test below must be unambiguous, because a
+    false "no" silently downgrades a real request. In particular this does NOT
+    use extract_choice() or is_restart_request() - extract_choice matches 1, 2
+    or 3 anywhere in the string (so "Euclid 2023 problem 3" would qualify) and
+    is_restart_request matches a bare "again" (so would "explain that again").
+    Both are fine as downstream handlers, but far too broad as a skip signal.
+    """
+    m = message.strip()
+    if not m:
+        return False
+    # Whole message is a slot pick, grade, or year ("1", "10", "2023"), or a
+    # one/two-character reply ("ok", "hi").
+    if len(m) <= 2 or m.isdigit():
+        return False
+    # Anchored at start, so these only fire on an actual yes/no reply.
+    if is_affirmative(m) or is_negative(m):
+        return False
+    # Requires a switch verb AND an agent name - precise enough to trust.
+    if is_agent_switch_request(m):
+        return False
+    if is_help_request(m):
+        return False
+    if _is_simple_small_talk(m):
+        return False
+    return True
+
+
 def _rewrite_user_message(message: str, session: dict[str, Any], forced_agent: str | None = None, intent: str | None = None) -> PromptRewriteResult:
     clean_message = message.strip()
     base_target = forced_agent or session.get("active_agent") or "general"
@@ -320,6 +338,15 @@ def _rewrite_user_message(message: str, session: dict[str, Any], forced_agent: s
         f"User request: {clean_message}\n"
         f"Use the agent's normal rules to handle it."
     )
+
+    # Skip the round trip entirely for turns that don't need it. Same result
+    # shape as the no-API-key path below, so every caller behaves identically.
+    if not _needs_llm_rewrite(clean_message):
+        return PromptRewriteResult(
+            target_agent=base_target if base_target in {"general", "match", "contest"} else "unknown",
+            cleaned_message=clean_message,
+            formatted_prompt=fallback_prompt,
+        )
 
     api_key = _llm_api_key()
     if not api_key:
@@ -709,7 +736,10 @@ class MentorTaskAgents:
         ):
             from api.contest_agent import contest_agent  # lazy: see note near top imports
 
-            contest_result = contest_agent.run(message, session)
+            # Hand over the rewrite we already paid for above. Without this the
+            # contest agent re-runs _rewrite_user_message on the same message,
+            # costing a second identical LLM call on every contest turn.
+            contest_result = contest_agent.run(message, session, rewrite=rewrite)
             if contest_result.active_agent:
                 session["active_agent"] = contest_result.active_agent
             return AgentResult(

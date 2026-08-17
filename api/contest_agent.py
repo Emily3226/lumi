@@ -14,6 +14,8 @@ v5 — fixes:
 
 from __future__ import annotations
 
+from api.env import load_dotenv_once
+
 import os
 import random
 import re
@@ -47,42 +49,11 @@ from rag.contest_ingestor import (
 
 # ── LLM client ─────────────────────────────────────────────────────────────
 
-def _load_dotenv_file() -> None:
-    env_path = Path(__file__).resolve().parents[1] / ".env"
-    if not env_path.exists():
-        return
-
-    try:
-        lines = env_path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return
-
-    for raw_line in lines:
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if line.startswith("export "):
-            line = line[len("export "):].strip()
-
-        if "=" not in line:
-            continue
-
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip()
-        if not key:
-            continue
-
-        if os.environ.get(key, "").strip():
-            continue
-
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
-            value = value[1:-1]
-
-        os.environ[key] = value
-
-
-_load_dotenv_file()
+# NOTE: this module used to carry its own .env loader doing an unconditional
+# os.environ[key] = value, which overrode variables set in the real deployment
+# environment with whatever .env was checked out. There were four such copies;
+# they now all defer to api/env.py, which fills in only unset variables.
+load_dotenv_once()
 
 _llm_init_error = ""
 
@@ -1577,12 +1548,29 @@ def handle_problem_set(text: str, session: dict) -> ContestResult:
 
 class ContestAgent:
 
-    def run(self, message: str, session: dict[str, Any] | None = None) -> ContestResult:
+    def run(
+        self,
+        message: str,
+        session: dict[str, Any] | None = None,
+        rewrite: "PromptRewriteResult | None" = None,
+    ) -> ContestResult:
+        """Handle one contest turn.
+
+        `rewrite` lets a caller that has ALREADY paid for the prompt-rewrite
+        LLM call hand the result in instead of us making the same call again.
+        api/agents.py rewrites every message before deciding to delegate here,
+        so without this a contest turn routed through /chat burned two
+        identical rewrite calls plus the answer - three LLM requests for one
+        user message. That is enough to trip a 10 RPM free tier after about
+        three messages a minute. /contest/ask passes nothing and still does
+        its own rewrite, so that path is unchanged.
+        """
         if session is None:
             session = {}
 
         raw_message = message
-        rewrite = _rewrite_user_message(message, session, forced_agent="contest")
+        if rewrite is None:
+            rewrite = _rewrite_user_message(message, session, forced_agent="contest")
         session["last_contest_prompt"] = rewrite.formatted_prompt
         message = rewrite.cleaned_message
         prompt_message = rewrite.formatted_prompt
