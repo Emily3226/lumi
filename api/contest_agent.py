@@ -61,11 +61,9 @@ try:
     from api.llm_provider import get_llm_config
     _, _model, _ = get_llm_config()
     if not _model:
-        _llm_init_error = "CEREBRAS_MODEL is not set"
+        _llm_init_error = "No LLM provider is configured (set GEMINI_API_KEY or GROQ_API_KEY)"
 except Exception as e:
     _llm_init_error = str(e)
-
-_MODEL = os.getenv("CEREBRAS_MODEL", "llama3.1-8b").strip() or "llama3.1-8b"
 
 _SYSTEM_MATH = """\
 You are Lumi, a friendly and knowledgeable AI tutor specialising in Waterloo Math Contests \

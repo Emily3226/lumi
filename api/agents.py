@@ -42,8 +42,6 @@ logger = logging.getLogger(__name__)
 # loader in api/env.py instead, which fills in only variables that are unset.
 load_dotenv_once()
 
-CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "").strip()
-CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "llama3.1-8b").strip() or "llama3.1-8b"
 AUXILIUM_SUPPORT_EMAIL = "auxilium.mentorship@gmail.com"
 SUPPORT_HANDOFF_MESSAGE = (
     f"I’m not sure how to help with that yet. If you want to reach the Auxilium coordinators, email {AUXILIUM_SUPPORT_EMAIL}. "
@@ -53,8 +51,8 @@ SUPPORT_HANDOFF_MESSAGE = (
 UNKNOWN_REQUEST_MESSAGE = SUPPORT_HANDOFF_MESSAGE
 
 LLM_NOT_CONFIGURED_MESSAGE = (
-    f"I can hand off to the AI fallback, but `CEREBRAS_API_KEY` is not set yet. If you need help now, email the Auxilium coordinators at {AUXILIUM_SUPPORT_EMAIL}. "
-    "Put `CEREBRAS_API_KEY` in the repo root `.env` file and restart the backend to re-enable AI fallback."
+    f"I can hand off to the AI fallback, but no LLM provider is configured yet. If you need help now, email the Auxilium coordinators at {AUXILIUM_SUPPORT_EMAIL}. "
+    "Put `GEMINI_API_KEY` (or `GROQ_API_KEY`) in the repo root `.env` file and restart the backend to re-enable AI fallback."
 )
 
 # Session states involved in the booking confirmation flow.
