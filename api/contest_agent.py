@@ -31,7 +31,7 @@ try:
 except Exception:
     certifi_win32 = None
 
-from api.llm_provider import call_cerebras
+from api.llm_provider import call_llm
 from api.agents import _rewrite_user_message
 from api.problem_set_service import build_problem_set_from_text, is_problem_set_request
 from rag.contest_retriever import (
@@ -61,11 +61,11 @@ try:
     from api.llm_provider import get_llm_config
     _, _model, _ = get_llm_config()
     if not _model:
-        _llm_init_error = "CEREBRAS_MODEL is not set"
+        _llm_init_error = "GEMINI_MODEL is not set"
 except Exception as e:
     _llm_init_error = str(e)
 
-_MODEL = os.getenv("CEREBRAS_MODEL", "llama3.1-8b").strip() or "llama3.1-8b"
+_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest").strip() or "gemini-flash-latest"
 
 _SYSTEM_MATH = """\
 You are Lumi, a friendly and knowledgeable AI tutor specialising in Waterloo Math Contests \
@@ -193,21 +193,21 @@ def _delatexify(text: str) -> str:
 
 
 def _grok(messages: list[dict], max_tokens: int = 1200) -> str:
-    """Call the Cerebras API and return the assistant text."""
+    """Call the Gemini API and return the assistant text."""
     try:
         payload_messages = [{"role": "system", "content": _SYSTEM_MATH}] + [
             {"role": str(item.get("role", "user")), "content": str(item.get("content", ""))}
             for item in messages
         ]
-        data = call_cerebras(payload_messages, max_tokens=max_tokens, temperature=0.2)
+        data = call_llm(payload_messages, max_tokens=max_tokens, temperature=0.2)
     except Exception as e:
         import traceback
-        print(f"[DEBUG] Cerebras call failed: {type(e).__name__}: {e}")
+        print(f"[DEBUG] Gemini call failed: {type(e).__name__}: {e}")
         traceback.print_exc()
         return f"_(AI explanation unavailable: {e})_"
 
     if not isinstance(data, dict):
-        print(f"[DEBUG] Cerebras returned non-dict data: {type(data)} = {data!r}")
+        print(f"[DEBUG] Gemini returned non-dict data: {type(data)} = {data!r}")
         return "_(AI explanation unavailable: unexpected LLM response.)_"
 
     choices = data.get("choices")

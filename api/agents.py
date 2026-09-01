@@ -18,7 +18,7 @@ from api.env import load_dotenv_once
 from api.services import book_pairing_in_db, get_mentor_slots, list_available_mentors, match_mentors
 from api.memory_store import get_memory_context, clear_session_memory
 from api.email_service import send_booking_confirmation
-from api.llm_provider import call_cerebras, get_llm_config
+from api.llm_provider import call_llm, get_llm_config
 from rag.subject_utils import subject_key
 
 # NOTE: api.contest_agent imports `_rewrite_user_message` from this module
@@ -42,8 +42,8 @@ logger = logging.getLogger(__name__)
 # loader in api/env.py instead, which fills in only variables that are unset.
 load_dotenv_once()
 
-CEREBRAS_API_KEY = os.getenv("CEREBRAS_API_KEY", "").strip()
-CEREBRAS_MODEL = os.getenv("CEREBRAS_MODEL", "llama3.1-8b").strip() or "llama3.1-8b"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest").strip() or "gemini-flash-latest"
 AUXILIUM_SUPPORT_EMAIL = "auxilium.mentorship@gmail.com"
 SUPPORT_HANDOFF_MESSAGE = (
     f"I’m not sure how to help with that yet. If you want to reach the Auxilium coordinators, email {AUXILIUM_SUPPORT_EMAIL}. "
@@ -53,8 +53,8 @@ SUPPORT_HANDOFF_MESSAGE = (
 UNKNOWN_REQUEST_MESSAGE = SUPPORT_HANDOFF_MESSAGE
 
 LLM_NOT_CONFIGURED_MESSAGE = (
-    f"I can hand off to the AI fallback, but `CEREBRAS_API_KEY` is not set yet. If you need help now, email the Auxilium coordinators at {AUXILIUM_SUPPORT_EMAIL}. "
-    "Put `CEREBRAS_API_KEY` in the repo root `.env` file and restart the backend to re-enable AI fallback."
+    f"I can hand off to the AI fallback, but `GEMINI_API_KEY` is not set yet. If you need help now, email the Auxilium coordinators at {AUXILIUM_SUPPORT_EMAIL}. "
+    "Put `GEMINI_API_KEY` in the repo root `.env` file and restart the backend to re-enable AI fallback."
 )
 
 # Session states involved in the booking confirmation flow.
@@ -257,7 +257,7 @@ def _extract_llm_text(data: dict[str, Any]) -> str | None:
                                 text_parts.append(text)
                     if text_parts:
                         return "".join(text_parts).strip()
-                # Reasoning models (e.g. Cerebras gpt-oss-120b) put their
+                # Reasoning models (e.g. Gemini Flash) put their
                 # chain-of-thought in `reasoning` and the answer in `content`.
                 # If the token budget runs out mid-thought the response comes
                 # back with finish_reason="length", a populated `reasoning`,
@@ -378,7 +378,7 @@ def _rewrite_user_message(message: str, session: dict[str, Any], forced_agent: s
     }
 
     try:
-        data = call_cerebras(
+        data = call_llm(
             [
                 {"role": "system", "content": prompt},
                 {"role": "user", "content": json.dumps(request, ensure_ascii=False)},
@@ -1012,8 +1012,8 @@ class MentorTaskAgents:
             "The local knowledge file did not contain an answer for this question. Provide a concise, helpful reply using any recent conversation context supplied. "
             "If uncertain, give a best-effort response and say so clearly."
         )
-        cerebras_api_key = _llm_api_key()
-        if not cerebras_api_key:
+        llm_api_key = _llm_api_key()
+        if not llm_api_key:
             return None
 
         history = session.get("messages", [])
@@ -1027,16 +1027,16 @@ class MentorTaskAgents:
         messages.append({"role": "user", "content": message})
 
         try:
-            data = call_cerebras(
+            data = call_llm(
                 messages,
                 max_tokens=1024,
                 temperature=0.6,
             )
         except requests.RequestException as exc:
-            logger.warning("Cerebras fallback request failed: %s", exc)
+            logger.warning("Gemini fallback request failed: %s", exc)
             return None
         except ValueError as exc:
-            logger.warning("Cerebras fallback returned invalid JSON: %s", exc)
+            logger.warning("Gemini fallback returned invalid JSON: %s", exc)
             return None
 
         return _extract_llm_text(data)

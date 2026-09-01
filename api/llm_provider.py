@@ -19,7 +19,7 @@ def _load_dotenv_file() -> None:
        actual deployment environment - backwards from how every other dotenv
        loader behaves (and from api/env.py, which this now matches).
     2. It re-read and re-parsed the file on every _resolve_env() call, which
-       is several times per provider per request. Now it runs once.
+       is several times per request. Now it runs once.
     """
     global _dotenv_loaded
     if _dotenv_loaded:
@@ -102,137 +102,162 @@ def _resolve_env(name: str, default: str = "") -> str:
     return default
 
 
-
-
-# ── Providers ─────────────────────────────────────────────────────────────────
-# Every provider below speaks the OpenAI chat-completions wire format, so a
-# single request builder covers all of them - only the API key, model id, and
-# base URL differ.
+# ── Gemini ────────────────────────────────────────────────────────────────────
+# This module used to fan out over four providers (Groq / Cerebras / Cloudflare
+# / Gemini) that all spoke the OpenAI chat-completions wire format. It is now
+# Gemini-only, and talks to Google's *native* REST API:
 #
-# Cerebras is no longer the default: its free tier ends 2026-08-17, after which
-# accounts move to a credit-based plan that requires a payment method. Groq
-# leads the chain instead - same wire format, no credit card, and this repo
-# already carried a GROQ_API_KEY from before the Cerebras migration.
+#   POST {base}/models/{model}:generateContent   with an x-goog-api-key header
 #
-# Override the order with LLM_PROVIDER_ORDER (comma-separated), or pin a single
-# provider with LLM_PROVIDER=groq.
+# Callers still receive an OpenAI-shaped dict (choices[0].message.content),
+# because api/agents.py, api/contest_agent.py and rag/langchain_matcher.py all
+# parse that shape - see _to_openai_shape() below.
 
-PROVIDERS: dict[str, dict[str, str]] = {
-    "gemini": {
-        "min_tokens": "700",
-        "key_env": "GEMINI_API_KEY",
-        "model_env": "GEMINI_MODEL",
-        "base_url_env": "GEMINI_BASE_URL",
-        # Deliberately the floating alias, not a pinned id. Pinning is what
-        # broke this provider: GEMINI_MODEL was set to gemini-2.0-flash, which
-        # now returns 429 (no free quota), and gemini-2.5-flash 404s outright.
-        # The alias follows whatever the current free Flash model is.
-        "default_model": "gemini-flash-latest",
-        # Google's OpenAI-compatibility layer, so the same payload works.
-        "default_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-    },
-    "groq": {
-        "min_tokens": "700",
-        "key_env": "GROQ_API_KEY",
-        "model_env": "GROQ_MODEL",
-        "base_url_env": "GROQ_BASE_URL",
-        # NOT llama-3.3-70b-versatile: Groq shuts that down for free and
-        # developer tiers on 2026-08-16. gpt-oss-120b is their stated
-        # migration target (qwen/qwen3.6-27b is the other option).
-        "default_model": "openai/gpt-oss-120b",
-        "default_base_url": "https://api.groq.com/openai/v1",
-    },
-    "cerebras": {
-        "min_tokens": "700",
-        "key_env": "CEREBRAS_API_KEY",
-        "model_env": "CEREBRAS_MODEL",
-        "base_url_env": "CEREBRAS_BASE_URL",
-        "default_model": "gpt-oss-120b",
-        "default_base_url": "https://api.cerebras.ai/v1",
-    },
-    "cloudflare": {
-        # Optional fourth provider in a different failure domain from the
-        # others (10k neurons/day free). Needs the account id baked into the
-        # URL, so there is no usable default - set CLOUDFLARE_BASE_URL to
-        # https://api.cloudflare.com/client/v4/accounts/<account_id>/ai/v1
-        # and CLOUDFLARE_API_KEY to a Workers AI token to enable it.
-        "key_env": "CLOUDFLARE_API_KEY",
-        "model_env": "CLOUDFLARE_MODEL",
-        "base_url_env": "CLOUDFLARE_BASE_URL",
-        "default_model": "@cf/meta/llama-3.1-8b-instruct",
-        "default_base_url": "",
-    },
-}
+# Deliberately the floating alias, not a pinned id. Pinning is what broke this
+# provider before: GEMINI_MODEL was set to gemini-2.0-flash, which returns 429
+# (no free quota), and gemini-2.5-flash 404s outright. The alias follows
+# whatever the current free Flash model is.
+DEFAULT_MODEL = "gemini-flash-latest"
+DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
-# Gemini leads: it is the most durable free tier of the four (1,500 requests/day
-# on Flash, no card, no expiry) and it is the only one here with no announced
-# end date. Cerebras is last because its free tier ends 2026-08-17 - delete it
-# from this tuple once that lands.
-_DEFAULT_ORDER = ("gemini", "groq", "cerebras", "cloudflare")
+# Flash "thinks" before answering, and those tokens count against
+# maxOutputTokens without ever appearing in the reply. Measured overhead is
+# ~300-400 tokens, so the small budgets callers use for short tasks (250 for
+# the prompt rewrite, for example) get consumed entirely by thinking and come
+# back empty with finishReason="MAX_TOKENS". Floor the budget so short prompts
+# still leave room for an actual answer.
+MIN_OUTPUT_TOKENS = 700
 
-
-def _provider_config(name: str) -> tuple[str, str, str]:
-    """Return (api_key, model, base_url) for `name`. Key is "" if unconfigured."""
-    spec = PROVIDERS[name]
-    api_key = _resolve_env(spec["key_env"])
-    model = _resolve_env(spec["model_env"], spec["default_model"]) or spec["default_model"]
-    base_url = _resolve_env(spec["base_url_env"], spec["default_base_url"]) or spec["default_base_url"]
-    return api_key, model, base_url
-
-
-def _provider_chain() -> list[str]:
-    """Providers to try, in order, that actually have an API key configured."""
-    pinned = _resolve_env("LLM_PROVIDER").strip().lower()
-    if pinned and pinned in PROVIDERS:
-        order = [pinned]
-    else:
-        raw = _resolve_env("LLM_PROVIDER_ORDER").strip()
-        order = [p.strip().lower() for p in raw.split(",") if p.strip()] if raw else list(_DEFAULT_ORDER)
-
-    chain = []
-    for name in order:
-        if name not in PROVIDERS or name in chain:
-            continue
-        api_key, _model, base_url = _provider_config(name)
-        # Both are required: a provider with a key but no base URL (Cloudflare
-        # without its account-scoped URL) would otherwise burn a failed request
-        # on every call before falling through.
-        if api_key and base_url:
-            chain.append(name)
-    return chain
+API_KEY_ENV = "GEMINI_API_KEY"
 
 
 def get_llm_config() -> tuple[str, str, str]:
-    """(api_key, model, base_url) of the first configured provider.
+    """(api_key, model, base_url) for Gemini.
 
-    Kept for callers that only want to know whether *some* LLM is reachable
+    Kept for callers that only want to know whether an LLM is reachable
     (api/agents.py `_llm_api_key`) or which model is answering.
     """
-    chain = _provider_chain()
-    if not chain:
-        # Nothing configured - report the head of the default order so error
-        # messages name a real provider instead of an empty string.
-        return _provider_config(_DEFAULT_ORDER[0])
-    return _provider_config(chain[0])
+    api_key = _resolve_env(API_KEY_ENV)
+    model = _resolve_env("GEMINI_MODEL", DEFAULT_MODEL) or DEFAULT_MODEL
+    base_url = _resolve_env("GEMINI_BASE_URL", DEFAULT_BASE_URL) or DEFAULT_BASE_URL
+    return api_key, model, base_url
 
 
-def build_payload(messages: list[dict[str, Any]], model: str, *, max_tokens: int = 1200, temperature: float = 0.2) -> dict[str, Any]:
+def build_payload(
+    messages: list[dict[str, Any]],
+    *,
+    max_tokens: int = 1200,
+    temperature: float = 0.2,
+) -> dict[str, Any]:
+    """Translate OpenAI-style `messages` into a Gemini generateContent body.
+
+    - `system` messages become a single top-level systemInstruction (Gemini has
+      no system role inside `contents`; several are joined with blank lines).
+    - `assistant` becomes `model`; everything else becomes `user`.
+    - Consecutive same-role turns are merged, because Gemini expects the
+      conversation to alternate.
+    """
+    system_parts: list[str] = []
+    contents: list[dict[str, Any]] = []
+
+    for item in messages:
+        role = str(item.get("role", "user")).strip().lower()
+        text = str(item.get("content", ""))
+        if not text:
+            continue
+
+        if role == "system":
+            system_parts.append(text)
+            continue
+
+        gemini_role = "model" if role == "assistant" else "user"
+        if contents and contents[-1]["role"] == gemini_role:
+            contents[-1]["parts"].append({"text": text})
+        else:
+            contents.append({"role": gemini_role, "parts": [{"text": text}]})
+
+    # A request with empty `contents` is rejected, so fold a system-only
+    # prompt into the first user turn instead.
+    if not contents and system_parts:
+        contents = [{"role": "user", "parts": [{"text": "\n\n".join(system_parts)}]}]
+        system_parts = []
+
+    payload: dict[str, Any] = {
+        "contents": contents,
+        "generationConfig": {
+            "maxOutputTokens": max(max_tokens, MIN_OUTPUT_TOKENS),
+            "temperature": temperature,
+        },
+    }
+
+    if system_parts:
+        payload["systemInstruction"] = {"parts": [{"text": "\n\n".join(system_parts)}]}
+
+    # Only sent when explicitly configured: accepted values differ between
+    # model generations (2.5 Flash takes a token budget, 0 to disable; Gemini 3
+    # rejects 0 on some models), so guessing here would break whichever model
+    # the floating alias currently points at.
+    thinking_budget = _resolve_env("GEMINI_THINKING_BUDGET")
+    if thinking_budget:
+        try:
+            payload["generationConfig"]["thinkingConfig"] = {
+                "thinkingBudget": int(thinking_budget)
+            }
+        except ValueError:
+            pass
+
+    return payload
+
+
+def _to_openai_shape(data: dict[str, Any], model: str) -> dict[str, Any]:
+    """Map a generateContent response onto the choices/message/content shape."""
+    candidates = data.get("candidates") if isinstance(data, dict) else None
+    text_parts: list[str] = []
+    finish_reason = None
+
+    if isinstance(candidates, list) and candidates:
+        first = candidates[0]
+        if isinstance(first, dict):
+            finish_reason = first.get("finishReason")
+            content = first.get("content")
+            if isinstance(content, dict):
+                for part in content.get("parts") or []:
+                    # Skip the model's own thinking - only the answer is text
+                    # the callers should see.
+                    if isinstance(part, dict) and not part.get("thought"):
+                        text = part.get("text")
+                        if isinstance(text, str) and text:
+                            text_parts.append(text)
+
+    usage = (data.get("usageMetadata") if isinstance(data, dict) else None) or {}
+
     return {
         "model": model,
-        "messages": [
-            {"role": str(item.get("role", "user")), "content": str(item.get("content", ""))}
-            for item in messages
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "".join(text_parts)},
+                "finish_reason": finish_reason,
+            }
         ],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        "stream": False,
+        "usage": {
+            "prompt_tokens": usage.get("promptTokenCount"),
+            "completion_tokens": usage.get("candidatesTokenCount"),
+            "total_tokens": usage.get("totalTokenCount"),
+        },
+        # The untouched response, for anything that needs promptFeedback or the
+        # safety ratings.
+        "raw": data,
     }
 
 
-def build_cerebras_payload(messages: list[dict[str, Any]], *, max_tokens: int = 1200, temperature: float = 0.2) -> dict[str, Any]:
-    """Back-compat shim - builds a payload for the active provider's model."""
-    _, model, _ = get_llm_config()
-    return build_payload(messages, model, max_tokens=max_tokens, temperature=temperature)
+# Free-tier Flash returns 503 UNAVAILABLE ("experiencing high demand") in
+# bursts, and 429 when the per-minute quota is hit. The old multi-provider
+# chain used to absorb those by failing over; with Gemini as the only provider,
+# a short retry on the same model is what is left. Anything else (400 bad
+# payload, 404 retired model, 403 bad key) is a config problem and fails fast.
+_RETRY_STATUS = {429, 503}
+_RETRY_BACKOFF_SECONDS = 1.0
 
 
 def call_llm(
@@ -242,69 +267,53 @@ def call_llm(
     temperature: float = 0.2,
     timeout: int = 30,
 ) -> dict[str, Any]:
-    """POST to the first working provider in the chain.
+    """Call Gemini generateContent and return an OpenAI-shaped response dict.
 
-    `timeout` is a *total* budget across providers, not per-attempt: failing
-    over must not multiply a caller's worst-case wait (api/agents.py's prompt
-    rewrite passes 12s expecting to be back within 12s). Each attempt gets
-    whatever is left, and we stop once the budget is spent.
+    `timeout` is a *total* budget, not per-attempt: retrying must not multiply
+    a caller's worst-case wait (api/agents.py's prompt rewrite passes 12s
+    expecting to be back within 12s). Each attempt gets whatever is left.
     """
     import requests
 
-    chain = _provider_chain()
-    if not chain:
-        raise ValueError(
-            "No LLM provider configured. Set one of: "
-            + ", ".join(spec["key_env"] for spec in PROVIDERS.values())
-        )
+    api_key, model, base_url = get_llm_config()
+    if not api_key:
+        raise ValueError(f"No LLM provider configured. Set {API_KEY_ENV}.")
 
+    url = f"{base_url.rstrip('/')}/models/{model}:generateContent"
+    payload = build_payload(messages, max_tokens=max_tokens, temperature=temperature)
     deadline = time.monotonic() + max(1, timeout)
     last_error: Exception | None = None
 
-    for name in chain:
+    while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0.5:
             break
 
-        api_key, model, base_url = _provider_config(name)
-
-        # Reasoning models (Gemini 3 Flash, gpt-oss-120b) spend "thinking"
-        # tokens that count against max_tokens but never appear in the reply.
-        # Measured overhead is ~300-400 tokens, so the small budgets callers
-        # use for short tasks (100 for an intro line, 200 for small talk, 250
-        # for the prompt rewrite) get consumed entirely by thinking and come
-        # back truncated - or empty with finish_reason="length". Floor the
-        # budget so short prompts still leave room for an actual answer.
-        floor = int(PROVIDERS[name].get("min_tokens") or 0)
-        effective_max = max(max_tokens, floor)
-
         try:
             response = requests.post(
-                f"{base_url.rstrip('/')}/chat/completions",
+                url,
                 headers={
-                    "Authorization": f"Bearer {api_key}",
+                    "x-goog-api-key": api_key,
                     "Content-Type": "application/json",
                 },
-                json=build_payload(messages, model, max_tokens=effective_max, temperature=temperature),
+                json=payload,
                 timeout=remaining,
             )
-        except Exception as exc:  # network error / timeout - try the next provider
-            last_error = exc
-            continue
+        except Exception as exc:  # network error / timeout
+            raise exc if last_error is None else last_error
 
         if response.ok:
-            return response.json()
+            return _to_openai_shape(response.json(), model)
 
-        # 4xx that isn't rate limiting is a config problem (bad key, retired
-        # model). Record it and let the next provider try.
         detail = response.text[:200].replace("\n", " ")
-        last_error = ValueError(f"{name} returned HTTP {response.status_code}: {detail}")
+        last_error = ValueError(f"gemini returned HTTP {response.status_code}: {detail}")
+        if response.status_code not in _RETRY_STATUS:
+            break
+
+        if deadline - time.monotonic() <= _RETRY_BACKOFF_SECONDS + 0.5:
+            break
+        time.sleep(_RETRY_BACKOFF_SECONDS)
 
     if last_error is not None:
         raise last_error
     raise ValueError("LLM request failed")
-
-
-# Back-compat alias: api/agents.py and api/contest_agent.py import this name.
-# It is no longer Cerebras-specific - it dispatches over the provider chain.
-call_cerebras = call_llm

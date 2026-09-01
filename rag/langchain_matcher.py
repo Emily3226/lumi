@@ -11,7 +11,7 @@ import json
 import logging
 from typing import List
 
-from api.llm_provider import call_cerebras
+from api.llm_provider import call_llm
 
 logger = logging.getLogger(__name__)
 
@@ -68,14 +68,14 @@ def rank_candidates_langchain(mentee: dict, candidates: List[dict], top_k: int =
             + "\n\nReturn only valid JSON. Score should be a number between 0 and 1."
         )
 
-        data = call_cerebras(
+        data = call_llm(
             [{"role": "user", "content": prompt}],
             max_tokens=512,
             temperature=0.2,
         )
         output = _extract_text(data)
         if not output:
-            logger.info("LangChain reranker: Cerebras returned no usable text")
+            logger.info("LangChain reranker: Gemini returned no usable text")
             return None
 
         parsed = None
