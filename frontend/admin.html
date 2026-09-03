@@ -3,81 +3,147 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Simple Lumi Admin</title>
+    <title>Lumi Admin | Auxilium</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
     <style>
-      body{font-family:system-ui,Segoe UI,Helvetica,Arial;margin:24px}
-      label{display:block;margin-top:8px}
-      input,select{width:100%;padding:8px;margin-top:4px;box-sizing:border-box}
-      button{margin-top:8px;padding:7px 14px;cursor:pointer}
-      table{width:100%;border-collapse:collapse;margin-top:12px}
-      td,th{border:1px solid #ddd;padding:6px;text-align:left}
+      /* Same theme tokens as chat.html - keep these in sync. */
+      :root{
+        --bg:#F7F5FA; --card:#ffffff; --accent:#6B46A3; --accent-deep:#4E3878;
+        --muted:#6B6178; --ink:#2B2140; --line:#DDD3E8;
+        --match:#5B7FA6; --match-bg:#EAF1F8; --match-line:#CFE0EE;
+        --danger:#B3402F; --danger-bg:#FBEAE7; --danger-line:#F0C9C2;
+        --ok:#3C6B3C; --ok-bg:#EAF3EA; --ok-line:#CFE3CF;
+        --font-display:"Fraunces", Georgia, serif;
+        --font-body:"Plus Jakarta Sans", -apple-system, "Segoe UI", sans-serif;
+      }
+      html,body{height:100%;margin:0;font-family:var(--font-body);background:var(--bg);color:var(--ink)}
+      .container{max-width:980px;margin:0 auto;padding:24px 20px 40px}
+
+      .site-bar{background:var(--accent);color:#fff;padding:14px 20px}
+      .site-bar-inner{max-width:980px;margin:0 auto;display:flex;align-items:center;justify-content:space-between}
+      .site-bar a.back-link{color:#fff;text-decoration:none;font-size:13.5px;font-weight:600;opacity:0.92;display:flex;align-items:center;gap:6px}
+      .site-bar a.back-link:hover{opacity:1;text-decoration:underline}
+      .site-bar .site-name{font-family:var(--font-display);font-size:16px;font-weight:600;letter-spacing:0.02em}
+
+      header{display:flex;align-items:center;gap:14px;margin-bottom:20px}
+      .logo{width:46px;height:46px;border-radius:14px 4px 14px 14px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:white;font-family:var(--font-display);font-weight:600;font-size:18px;flex-shrink:0}
+      h1{font-family:var(--font-display);font-size:21px;font-weight:600;margin:0;color:var(--ink)}
+      .meta{font-size:13px;color:var(--muted);margin-top:2px}
+
+      .panel{margin-top:18px;border:1px solid var(--line);border-radius:16px;background:var(--card);padding:18px}
+      .panel h2{font-family:var(--font-display);font-size:16px;font-weight:600;margin:0 0 14px;color:var(--ink)}
+      .panel-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+      .panel-head h2{margin:0}
+
+      label{display:block;margin-top:10px;font-size:13px;font-weight:600;color:var(--muted)}
+      input,select{width:100%;padding:9px 11px;margin-top:5px;box-sizing:border-box;border:1px solid var(--line);border-radius:10px;font-family:var(--font-body);font-size:14px;background:#fff;color:var(--ink)}
+      input:focus,select:focus,button:focus-visible{outline:3px solid var(--match-line);outline-offset:1px;border-color:var(--match)}
+
+      button{margin-top:10px;padding:9px 16px;cursor:pointer;background:var(--accent);color:#fff;border:none;border-radius:12px;font-size:13.5px;font-weight:600;font-family:var(--font-body)}
+      button:hover{background:var(--accent-deep)}
+      button:active{transform:translateY(1px)}
+      button.secondary{background:var(--match-bg);color:var(--match);border:1px solid var(--match-line)}
+      button.secondary:hover{background:#DCE9F3}
+
+      table{width:100%;border-collapse:collapse;margin-top:14px;font-size:13.5px}
+      td,th{border-bottom:1px solid var(--line);padding:9px 8px;text-align:left}
+      th{color:var(--muted);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:0.03em}
+      tr:last-child td{border-bottom:none}
+
       .section{margin-top:28px}
-      .slot-form{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:10px}
-      .slot-form label{margin:0;flex:1;min-width:120px}
-      .slot-form input{padding:7px;margin-top:2px}
-      .del-btn{background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;padding:4px 10px;border-radius:6px;cursor:pointer}
-      .del-btn:hover{background:#fecaca}
-      .mentor-select{padding:8px;border:1px solid #d1d5db;border-radius:6px;min-width:180px;margin-top:4px}
+      .slot-form{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;margin-top:12px}
+      .slot-form label{margin:0;flex:1;min-width:150px}
+      .del-btn{background:var(--danger-bg);color:var(--danger);border:1px solid var(--danger-line);padding:5px 12px;border-radius:10px;cursor:pointer;font-size:12.5px;font-weight:600;margin-top:0}
+      .del-btn:hover{background:#F5D9D2}
+      .mentor-select{padding:9px 11px;border:1px solid var(--line);border-radius:10px;min-width:200px;margin-top:5px}
+      .badge{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px}
+      .badge.yes{background:var(--ok-bg);color:var(--ok)}
+      .badge.no{background:var(--danger-bg);color:var(--danger)}
+      .empty-hint{color:var(--muted);font-style:italic;font-size:13px}
+      @media(max-width:640px){.container{padding:16px 12px 24px}}
     </style>
   </head>
   <body>
-    <h3>Mentors (admin)</h3>
-    <div>
-      <form id="add-form">
-        <label>Name<input id="name" required /></label>
-        <label>Grade<input id="grade" type="number" value="12" /></label>
-        <label>Subject<input id="subject" value="Math" /></label>
-        <label>Qualifications<input id="qual" /></label>
-        <button type="submit">Add / Update Mentor</button>
-      </form>
+    <div class="site-bar">
+      <div class="site-bar-inner">
+        <a class="back-link" href="/frontend/chat.html">&larr; Back to Lumi</a>
+        <span class="site-name">auxilium</span>
+      </div>
     </div>
-
-    <div>
-      <button id="refresh">Refresh List</button>
-      <table id="mentors"><thead><tr><th>Name</th><th>Grade</th><th>Subject</th><th>Qualifications</th><th>Available</th><th>Action</th></tr></thead><tbody></tbody></table>
-    </div>
-
-    <h3 class="section">Bookings</h3>
-    <div>
-      <button id="refresh-bookings">Refresh Bookings</button>
-      <table id="bookings"><thead><tr><th>ID</th><th>Mentor</th><th>Mentee</th><th>Subject</th><th>Score</th><th>Time Slot</th><th>When</th><th>Status</th><th>Action</th></tr></thead><tbody></tbody></table>
-    </div>
-
-    <!-- ── Time Slot Management ──────────────────────────────────────── -->
-    <h3 class="section">Time Slot Management</h3>
-    <div>
-      <label>Select mentor to manage slots:</label>
-      <select id="slot-mentor-select" class="mentor-select">
-        <option value="">— choose a mentor —</option>
-      </select>
-      <button id="load-slots-btn" style="margin-left:8px">Load Slots</button>
-
-      <div id="slot-section" style="display:none;margin-top:14px">
-        <h4 id="slot-section-title" style="margin:0 0 8px"></h4>
-
-        <div class="slot-form">
-          <label>Day of week
-            <select id="slot-day" class="mentor-select" style="margin-top:2px">
-              <option value="">— pick a day —</option>
-              <option>Monday</option>
-              <option>Tuesday</option>
-              <option>Wednesday</option>
-              <option>Thursday</option>
-              <option>Friday</option>
-              <option>Saturday</option>
-              <option>Sunday</option>
-            </select>
-          </label>
-          <label>Start time (1-hour slot)
-            <input type="time" id="slot-start" step="3600" />
-          </label>
-          <button type="button" id="add-slot-btn" style="align-self:flex-end;margin-top:0">Add Slot</button>
+    <div class="container">
+      <header>
+        <div class="logo">L</div>
+        <div>
+          <h1>Lumi Admin</h1>
+          <div class="meta">Manage mentors, bookings, and weekly time slots.</div>
         </div>
+      </header>
 
-        <table id="slots-table" style="margin-top:12px">
-          <thead><tr><th>ID</th><th>Day</th><th>Start</th><th>End</th><th>Status</th><th>Action</th></tr></thead>
-          <tbody id="slots-tbody"></tbody>
-        </table>
+      <div class="panel">
+        <h2>Add / Update Mentor</h2>
+        <form id="add-form">
+          <label>Name<input id="name" required /></label>
+          <label>Grade<input id="grade" type="number" value="12" /></label>
+          <label>Subject<input id="subject" value="Math" /></label>
+          <label>Qualifications<input id="qual" /></label>
+          <button type="submit">Add / Update Mentor</button>
+        </form>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Mentors</h2>
+          <button class="secondary" id="refresh">Refresh List</button>
+        </div>
+        <table id="mentors"><thead><tr><th>Name</th><th>Grade</th><th>Subject</th><th>Qualifications</th><th>Available</th><th>Action</th></tr></thead><tbody></tbody></table>
+      </div>
+
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Bookings</h2>
+          <button class="secondary" id="refresh-bookings">Refresh Bookings</button>
+        </div>
+        <table id="bookings"><thead><tr><th>ID</th><th>Mentor</th><th>Mentee</th><th>Subject</th><th>Score</th><th>Time Slot</th><th>When</th><th>Status</th><th>Action</th></tr></thead><tbody></tbody></table>
+      </div>
+
+      <!-- ── Time Slot Management ──────────────────────────────────────── -->
+      <div class="panel">
+        <h2>Time Slot Management</h2>
+        <label>Select mentor to manage slots:</label>
+        <select id="slot-mentor-select" class="mentor-select">
+          <option value="">— choose a mentor —</option>
+        </select>
+        <button id="load-slots-btn" class="secondary" style="margin-left:8px">Load Slots</button>
+
+        <div id="slot-section" style="display:none;margin-top:16px">
+          <h2 id="slot-section-title" style="font-size:14px;margin:0 0 8px"></h2>
+
+          <div class="slot-form">
+            <label>Day of week
+              <select id="slot-day" class="mentor-select" style="margin-top:2px">
+                <option value="">— pick a day —</option>
+                <option>Monday</option>
+                <option>Tuesday</option>
+                <option>Wednesday</option>
+                <option>Thursday</option>
+                <option>Friday</option>
+                <option>Saturday</option>
+                <option>Sunday</option>
+              </select>
+            </label>
+            <label>Start time (1-hour slot)
+              <input type="time" id="slot-start" step="3600" />
+            </label>
+            <button type="button" id="add-slot-btn" style="align-self:flex-end;margin-top:0">Add Slot</button>
+          </div>
+
+          <table id="slots-table" style="margin-top:12px">
+            <thead><tr><th>ID</th><th>Day</th><th>Start</th><th>End</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody id="slots-tbody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -127,9 +193,10 @@
 
         allMentors.forEach(m => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${m.name}</td><td>${m.grade}</td><td>${m.subject}</td><td>${m.qualifications}</td><td>${m.available? 'Yes':'No'}</td><td></td>`;
+          tr.innerHTML = `<td>${m.name}</td><td>${m.grade}</td><td>${m.subject}</td><td>${m.qualifications}</td><td><span class="badge ${m.available?'yes':'no'}">${m.available? 'Available':'Unavailable'}</span></td><td></td>`;
           const td = tr.querySelector('td:last-child');
           const btn = document.createElement('button');
+          btn.className = 'secondary';
           btn.textContent = m.available? 'Mark Unavailable':'Mark Available';
           btn.onclick = async ()=>{
             await adminFetch(API + '/mentors/' + encodeURIComponent(m.name) + '/availability?available=' + (m.available?0:1), {method:'POST'});
@@ -152,11 +219,13 @@
           const td = tr.querySelector('td:last-child');
           if((b.status||'active') === 'active'){
             const cancel = document.createElement('button');
+            cancel.className = 'del-btn';
             cancel.textContent = 'Cancel';
             cancel.onclick = async ()=>{ await adminFetch(API + '/bookings/' + b.id + '/cancel', {method:'POST'}); load(); };
             td.appendChild(cancel);
           } else {
             const rel = document.createElement('button');
+            rel.className = 'secondary';
             rel.textContent = 'Release Mentor';
             rel.onclick = async ()=>{ await adminFetch(API + '/bookings/' + b.id + '/release-mentor', {method:'POST'}); load(); };
             td.appendChild(rel);
@@ -186,12 +255,12 @@
         const slots = await r.json();
         tbody.innerHTML = '';
         if (!slots.length) {
-          tbody.innerHTML = '<tr><td colspan="6" style="color:#6b7280;font-style:italic">No slots yet — add one above.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="6" class="empty-hint">No slots yet — add one above.</td></tr>';
           return;
         }
         slots.forEach(s => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${s.id}</td><td>${s.day_of_week}</td><td>${s.start_time}</td><td>${s.end_time}</td><td>${s.available ? '🟢 Available' : '🔴 Booked'}</td><td></td>`;
+          tr.innerHTML = `<td>${s.id}</td><td>${s.day_of_week}</td><td>${s.start_time}</td><td>${s.end_time}</td><td><span class="badge ${s.available?'yes':'no'}">${s.available ? 'Available' : 'Booked'}</span></td><td></td>`;
           const td = tr.querySelector('td:last-child');
           if (s.available) {
             const del = document.createElement('button');
