@@ -40,6 +40,16 @@ data/chat_sessions.json
 # Runtime & user data (should not be tracked)
 data/user_memory.json
 
+# Per-session chat/memory data now lives in MongoDB (api/session_store.py,
+# api/memory_store.py) - these directories are dead, but keep them ignored
+# in case anything ever writes a stray local file again.
+data/chat_sessions/
+data/user_memory/
+
+# Read-through PDF cache (rag/mongo_pdf_store.py) - GridFS is the source of
+# truth, this is regenerated on demand.
+data/pdf_cache/
+
 # Generated/derived data (regenerate via scripts/import_and_train.py)
 data/cleaned/
 
