@@ -3,238 +3,11 @@
   "subject": null,
   "grade": null,
   "name": null,
-  "active_agent": "contest",
+  "active_agent": "general",
   "pending_match_step": null,
   "query_text": null,
   "pending_booking_choice": null,
-  "matches": [
-    {
-      "document": "Contest: Euclid 2023\nProblem 5\nTopics: algebra, number_theory, geometry, trigonometry, logic\n\n5\n(a) Suppose t at f(x)\nx + ( n\n)x + (n\n) o so\ne\ntege n W at s t e\nsmallest positive integer n for which f(x) has no real roots?\n(b) In the diagram, △PQR has PQ = a, QR = b, PR = 21, and ∠PQR = 60◦.\nAlso, △STU has ST = a, TU = b, ∠TSU = 30◦, and sin(∠TUS) =\n4\n5.\nDetermine the values of a and b.\n30˚\nS\nT\nU\na\nb\n21\nP\nQ\nR\na\nb\n60˚\n6.\n(a) A triangle of area 770 cm2 is divided into",
-      "contest": "Euclid",
-      "year": 2023,
-      "problem_number": 5,
-      "part": null,
-      "topics": [
-        "algebra",
-        "number_theory",
-        "geometry",
-        "trigonometry",
-        "logic"
-      ],
-      "grades": [
-        12
-      ],
-      "has_solution": true,
-      "has_diagram": true,
-      "source_file": "2023EuclidContest.pdf",
-      "pdf_path": "Euclid/2023EuclidContest.pdf",
-      "solution_pdf_path": "Euclid/2023EuclidSolution.pdf",
-      "page_number": 2,
-      "solution_page_number": 4,
-      "solution_text": "5\n(a)\ne quad at c u ct o\nf(x)\nx + ( n\n)x + (n\n)\nas\no ea\noots e act y w e\nits discriminant, ∆, is negative.\nThe discriminant of this function is\n∆= (2n −1)2 −4(1)(n2 −22)\n= (4n2 −4n + 1) −(4n2 −88)\n= −4n + 89\nWe have ∆< 0 exactly when −4n + 89 < 0 or 4n > 89.\nThis ﬁnal inequality is equivalent to n > 89\n4 = 221\n4.\nTherefore, the smallest positive integer that satisﬁes this inequality, and hence for which\nf(x) has no real roots, is n = 23.\n(b) Using the cosine law in △PQR,\nPR2 = PQ2 + QR2 −2 · PQ · QR · cos(∠PQR)\n212 = a2 + b2 −2ab cos(60◦)\n441 = a2 + b2 −2ab · 1\n2\n441 = a2 + b2 −ab\nUsing the sine law in △STU, we obtain\nST\nsin(∠TUS) =\nTU\nsin(∠TSU) and so\na\n4/5 =\nb\nsin(30◦).\nTherefore,\na\n4/5 =\nb\n1/2 and so a = 4\n5 · 2b = 8\n5b.\nSubstituting into the previous equation,\n441 =\n\u0000 8\n5b\n\u00012 + b2 −\n\u0000 8\n5b\n\u0001\nb\n441 = 64\n25b2 + b2 −8\n5b2\n441 = 64\n25b2 + 25\n25b2 −40\n25b2\n441 = 49\n25b2\n225 = b2\nSince b > 0, then b = 15 and so a = 8\n5b = 8\n5 · 15 = 24.\n\n2023 Euclid Contest Solutions\nPage 6\n6.\n(a) Solution 1"
-    },
-    {
-      "document": "Contest: Euclid 2023\nProblem 3\nTopics: number_theory, sequences\n\n3\n(a)\ne pos t ve d v so s o 6 a e\n,\n, 3, a d 6\nW at s t e su\no t e pos t ve\ndivisors of 64?\n(b) Fionn wrote 4 consecutive integers on a whiteboard. Lexi came along and erased\none of the integers. Fionn noticed that the sum of the remaining integers was\n847. What integer did Lexi erase?\n(c) An arithmetic sequence with 7 terms has ﬁrst term d2 and common diﬀerence d.\nThe sum of the 7 terms in the sequence is 756. Determine all possible values of d.\n(An arithmetic sequence is a sequence in which each term after the ﬁrst is obtained\nfrom the previous term by adding a constant, called the common diﬀerence. For\nexample, 3, 5, 7, 9 are the ﬁrst four terms of an arithmetic sequence.)\n\n4.\n(a) Liang and Edmundo paint at diﬀerent but constant rates. Liang can paint a room",
-      "contest": "Euclid",
-      "year": 2023,
-      "problem_number": 3,
-      "part": null,
-      "topics": [
-        "number_theory",
-        "sequences"
-      ],
-      "grades": [
-        12
-      ],
-      "has_solution": true,
-      "has_diagram": true,
-      "source_file": "2023EuclidContest.pdf",
-      "pdf_path": "Euclid/2023EuclidContest.pdf",
-      "solution_pdf_path": "Euclid/2023EuclidSolution.pdf",
-      "page_number": 1,
-      "solution_page_number": 2,
-      "solution_text": "3\n(a) S\nce 6\n, ts pos t ve d v so s a e\n,\n,\n, 8,\n6, 3 , a d 6\nThe sum of these divisors is 1 + 2 + 4 + 8 + 16 + 32 + 64 = 127.\n(b) Suppose that the four consecutive integers that Fionn originally wrote on the blackboard\nwere x, x + 1, x + 2, and x + 3.\nWhen Lexi erases one of these integers, the sum of the remaining three integers is equal\nto one of the following:\n(x + 1) + (x + 2) + (x + 3) = 3x + 6\nx + (x + 2) + (x + 3) = 3x + 5\nx + (x + 1) + (x + 3) = 3x + 4\nx + (x + 1) + (x + 2) = 3x + 3\nWe are told that the sum of these integers is 847.\nWe note that 847 = 3 · 282 + 1, which is one more than a multiple of 3. Since 3x + 3 and\n3x + 6 are always multiples of 3 and 3x + 5 is 2 more than a multiple of 3, then we must\nhave 3x + 4 = 847 and so 3x = 843 or x = 281. (Alternatively, we could have set each\nof the four sums above equal to 847 to determine in which case or cases we obtained an\ninteger solution for x.)\nTherefore, the original integers were 281, 282, 283, 284 and Lexi erased x + 2 = 283.\n(c) From the given information, the 7 terms in the arithmetic sequence are\nd2,\nd2 + d,\nd2 + 2d,\nd2 + 3d,\nd2 + 4d,\nd2 + 5d,\nd2 + 6d\nSince the sum of these 7 terms is 756, we obtain the following equivalent equations:\nd2 + (d2 + d) + (d2 + 2d) + (d2 + 3d) + (d2 + 4d) + (d2 + 5d) + (d2 + 6d) = 756\n7d2 + 21d = 756\nd2 + 3d = 108\nd2 + 3d −108 = 0\n(d + 12)(d −9) = 0\nand so d = −12 or d = 9.\nThe corresponding arithmetic sequences are\n144, 132, 120, 108, 96, 84, 72\nand\n81, 90, 99, 108, 117, 126, 135\n\n2023 Euclid Contest Solutions\nPage 4\n4.\n(a) In 1 hour, Liang paints 1\n3 of the room."
-    },
-    {
-      "document": "Contest: Euclid 2023\nProblem 4\nTopics: number_theory, logic\n\n(a)\na g a d\nd\nu do pa\nt at d\ne e t but co sta t ates\na g ca\npa\nt a oo\nin 3 hours if she works alone. Edmundo can paint the same room in 4 hours if\nhe works alone. Liang works alone for 2 hours and then stops. Edmundo ﬁnishes\npainting the room. How many minutes will Edmundo need to ﬁnish painting the\nroom?\n(b) On January 1, 2021, an investment had a value of $400.\nFrom January 1, 2021 to January 1, 2022, the value of the investment increased\nby A% from its value on January 1, 2021 for some A > 0.\nFrom January 1, 2022 to January 1, 2023, the value of the investment decreased\nby A% from its value on January 1, 2022.\nOn January 1, 2023, the value of the investment was $391.\nDetermine all possible values of A.\n5.\n(a) Suppose that f(x) = x2 + (2n −1)x + (n2 −22) for some integer n. What is the",
-      "contest": "Euclid",
-      "year": 2023,
-      "problem_number": 4,
-      "part": null,
-      "topics": [
-        "number_theory",
-        "logic"
-      ],
-      "grades": [
-        12
-      ],
-      "has_solution": true,
-      "has_diagram": true,
-      "source_file": "2023EuclidContest.pdf",
-      "pdf_path": "Euclid/2023EuclidContest.pdf",
-      "solution_pdf_path": "Euclid/2023EuclidSolution.pdf",
-      "page_number": 2,
-      "solution_page_number": 3,
-      "solution_text": "(a)\nou ,\na g pa ts 3 o t e oo\nThus, in 2 hours, Liang paints 2\n3 of the room.\nEdmundo needs to paint 1 −2\n3 = 1\n3 of the room.\nIn 1 hour, Edmundo paints 1\n4 of the room.\nSince 1\n4 =\n3\n12 and 1\n3 =\n4\n12, this means that Edmundo paints for 1\n3 ÷ 1\n4 =\n4\n12 ÷ 3\n12 = 4\n3 of an\nhour.\nTherefore, Edmundo paints for 80 minutes.\n(b) When converted to a fraction, A% is equal to A\n100.\nWhen an amount is increased by A%, we can ﬁnd its new value by multiplying by 1+ A\n100.\nWhen an amount is decreased by A%, we can ﬁnd its new value by multiplying by 1−A\n100.\nWhen $400 is increased by A%, the amount becomes $400\n\u0012\n1 + A\n100\n\u0013\n.\nWhen this value is decreased by A%, the amount becomes $400\n\u0012\n1 + A\n100\n\u0013 \u0012\n1 −A\n100\n\u0013\n.\nTherefore,\n$400\n\u0012\n1 + A\n100\n\u0013 \u0012\n1 −A\n100\n\u0013\n= $391\n\u0012\n1 + A\n100\n\u0013 \u0012\n1 −A\n100\n\u0013\n= 391\n400\n1 −A2\n1002 = 1 −\n9\n400\nA2\n1002 =\n9\n400\nA2\n1002 = 32\n202\nA\n100 = 3\n20\n(since A > 0)\nA = 100 · 3\n20 = 15\nTherefore, A = 15.\n\n2023 Euclid Contest Solutions\nPage 5\n5.\n(a) The quadratic function f(x) = x2 + (2n −1)x + (n2 −22) has no real roots exactly when"
-    },
-    {
-      "document": "Contest: Euclid 2023\nProblem 6\nTopics: geometry\n\n6\n(a)\nt a g e o\na ea 770 c\ns d v ded\nto\n11 regions of equal height by 10 lines that\nare all parallel to the base of the triangle.\nStarting from the top of the triangle, every\nother region is shaded, as shown.\nWhat is\nthe total area of the shaded regions?\n(b) A square lattice of 16 points is constructed\nsuch\nthat\nthe\nhorizontal\nand\nvertical\ndistances between adjacent points are all\nexactly 1 unit. Each of four pairs of points\nare connected by a line segment, as shown.\nThe intersections of these line segments are\nthe vertices of square ABCD. Determine the\narea of square ABCD.\nA\nB\nC\nD\n\n7.\n(a) A bag contains 3 red marbles and 6 blue marbles. Akshan removes one marble at",
-      "contest": "Euclid",
-      "year": 2023,
-      "problem_number": 6,
-      "part": null,
-      "topics": [
-        "geometry"
-      ],
-      "grades": [
-        12
-      ],
-      "has_solution": true,
-      "has_diagram": true,
-      "source_file": "2023EuclidContest.pdf",
-      "pdf_path": "Euclid/2023EuclidContest.pdf",
-      "solution_pdf_path": "Euclid/2023EuclidSolution.pdf",
-      "page_number": 2,
-      "solution_page_number": 5,
-      "solution_text": "6\n(a) Solution\nWe make two copies of the given triangle, labelling them △ABC and △DEF, as shown:\nA\nB\nC\nE\nD\nF\nThe combined area of these two triangles is 2 · 770 cm2 = 1540 cm2, and the shaded area\nin each triangle is the same.\nNext, we rotate △DEF by 180◦:\nA\nB\nC\nE\nD\nF\nand join the two triangles together:\nA\nB\nC\nE\nWe note that BC and AE (which was FE) are equal in length (since they were copies of\neach other) and parallel (since they are 180◦rotations of each other). The same is true\nfor AB and EC.\nTherefore, ABCE is a parallelogram.\nFurther, ABCE is divided into 11 identical parallelograms (6 shaded and 5 unshaded)\nby the horizontal lines. (Since the sections of the two triangles are equal in height, the\nhorizontal lines on both sides of AC align.)\nThe total area of parallelogram ABCE is 1540 cm2.\nThus, the shaded area of ABCE is\n6\n11 · 1540 cm2 = 840 cm2.\nSince this shaded area is equally divided between the two halves of the parallelogram, then\nthe combined area of the shaded regions of △ABC is 1\n2 · 840 cm2 = 420 cm2.\n\n2023 Euclid Contest Solutions\nPage 7\nSolution 2\nWe label the points where the horizontal lines touch AB and AC as shown:\nA\nB\nC\nB1\nB7\nB6\nB5\nB4\nB3\nB2\nB8\nB9\nB10\nC1\nC7\nC6\nC5\nC4\nC3\nC2\nC8 C9 C10\nWe use the notation |△ABC| to represent the area of △ABC and use similar notation\nfor the area of other triangles and quadrilaterals.\nLet A be equal to the total area of the shaded regions.\nThus,\nA = |△AB1C1| + |B2B3C3C2| + |B4B5C5C4| + |B6B7C7C6| + |B8B9C9C8| + |B10BCC10|\nThe area of each of these quadrilaterals is equal to the diﬀerence of the area of two triangles.\nFor example,\n|B2B3C3C2| = |△AB3C3| −|△AB2C2| = −|△AB2C2| + |△AB3C3|\nTherefore,\nA = |△AB1C1| −|△AB2C2| + |△AB3C3| −|△AB4C4| + |△AB5C5|\n−|△AB6C6| + |△AB7C7| −|△AB8C8| + |△AB9C9| −|△AB10C10| + |△ABC|\nEach of △AB1C1, △AB2C2, . . ., △AB10C10 is similar to △ABC because their two base\nangles are equal due.\nSuppose that the height of △ABC from A to BC is h.\nSince the height of each of the 11 regions is equal in height, then the height of △AB1C1\nis\n1\n11h, the height of △AB2C2 is\n2\n11h, and so on.\nWhen two triangles are similar, their heights are in the same ratio as their side lengths:\nTo see this, suppose that △PQR is similar to △STU and that altitudes are drawn\nfrom P and S to V and W.\nP\nQ\nV\nR\nT\nS\nW\nU\nSince ∠PQR = ∠STU, then △PQV is similar to △STW (equal angle; right\nangle), which means that PQ\nST = PV\nSW . In other words, the ratio of sides is equal\nto the ratio of heights.\nSince the height of △AB1C1 is\n1\n11h, then B1C1 =\n1\n11BC.\nTherefore, |△AB1C1| = 1\n2 · B1C1 · 1\n11h = 1\n2 · 1\n11BC · 1\n11h =\n12\n112 · 1\n2 · BC · h =\n12\n112|△ABC|.\nSimilarly, since the height of △AB2C2 is\n2\n11h, then B2C2 =\n2\n11BC.\n\n2023 Euclid Contest Solutions\nPage 8\nTherefore, |△AB2C2| = 1\n2 · B2C2 · 2\n11h = 1\n2 · 2\n11BC · 2\n11h =\n22\n112 · 1\n2 · BC · h =\n22\n112|△ABC|.\nThis result continues for each of the triangles.\nTherefore,\nA =\n12\n112|△ABC| −22\n112|△ABC| + 32\n112|△ABC| −42\n112|△ABC| + 52\n112|△ABC|\n−62\n112|△ABC| + 72\n112|△ABC| −82\n112|△ABC| + 92\n112|△ABC| −102\n112|△ABC| + 112\n112|△ABC|\n=\n1\n112|△ABC|(112 −102 + 92 −82 + 72 −62 + 52 −42 + 32 −22 + 1)\n=\n1\n112(770 cm2)((11 + 10)(11 −10) + (9 + 8)(9 −8) + · · · + (3 + 2)(3 −2) + 1)\n=\n1\n112(770 cm2)(11 + 10 + 9 + 8 + 7 + 6 + 5 + 4 + 3 + 2 + 1)\n=\n1\n11(70 cm2) · 66\n= 420 cm2\nTherefore, the combined area of the shaded regions of △ABC is 420 cm2.\n(b) Solution 1\nWe label ﬁve additional points in the diagram:\nA\nB\nC\nD\nP\nQ\nR\nS\nT\nSince PQ = QR = RS = 1, then PS = 3 and PR = 2.\nSince ∠PST = 90◦, then PT =\n√\nPS2 + ST 2 =\n√\n32 + 12 =\n√\n10 by the Pythagorean\nTheorem.\nWe are told that ABCD is a square.\nThus, PT is perpendicular to QC and to RB.\nThus, △PDQ is right-angled at D and △PAR is right-angled at A.\nSince △PDQ, △PAR and △PST are all right-angled and all share an angle at P, then\nthese three triangles are similar.\nThis tells us that PA\nPS = PR\nPT and so PA = 3 · 2\n√\n10. Also, PD\nPS = PQ\nPT and so PD = 1 · 3\n√\n10.\nTherefore,\nDA = PA −PD =\n6\n√\n10 −\n3\n√\n10 =\n3\n√\n10\nThis means that the area of square ABCD is equal to DA2 =\n\u0012 3\n√\n10\n\u00132\n= 9\n10.\n\n2023 Euclid Contest Solutions\nPage 9\nSolution 2\nWe add coordinates to the diagram as shown:\nA\nB\nC\nD\n(0, 3)\n(1, 3)\n(2, 3)\n(3, 3)\n(0, 2)\n(3, 2)\n(0, 1)\n(3, 1)\n(0, 0)\n(1, 0)\n(2, 0)\n(3, 0)\nWe determine the side length of square ABCD by determining the coordinates of D and\nA and then calculating the distance between these points.\nThe slope of the line through (0, 3) and (3, 2) is 3 −2\n0 −3 = −1\n3.\nThis equation of this line can be written as y = −1\n3x + 3.\nThe slope of the line through (0, 0) and (1, 3) is 3.\nThe equation of this line can be written as y = 3x.\nThe slope of the line through (1, 0) and (2, 3) is also 3.\nThe equation of this line can be written as y = 3(x −1) = 3x −3.\nPoint D is the intersection point of the lines with equations y = −1\n3x + 3 and y = 3x.\nEquating expressions for y, we obtain −1\n3x + 3 = 3x and so 10\n3 x = 3 which gives x = 9\n10.\nSince y = 3x, we get y = 27\n10 and so the coordinates of D are\n\u0012 9\n10, 27\n10\n\u0013\n.\nPoint A is the intersection point of the lines with equations y = −1\n3x + 3 and y = 3x −3.\nEquating expressions for y, we obtain −1\n3x + 3 = 3x −3 and so 10\n3 x = 6 which gives\nx = 18\n10.\nSince y = 3x −3, we get y = 24\n10 and so the coordinates of A are\n\u001218\n10, 24\n10\n\u0013\n. (It is easier\nto not reduce these fractions.)\nTherefore,\nDA =\ns\u0012 9\n10 −18\n10\n\u00132\n+\n\u001227\n10 −24\n10\n\u00132\n=\ns\u0012\n−9\n10\n\u00132\n+\n\u0012 3\n10\n\u00132\n=\nr\n90\n100 =\nr\n9\n10\nThis means that the area of square ABCD is equal to DA2 =\n r\n9\n10\n!2\n= 9\n10.\n\n2023 Euclid Contest Solutions\nPage 10\n7.\n(a) Each possible order in which Akshan removes the marbles corresponds to a sequence of 9"
-    },
-    {
-      "document": "Contest: Euclid 2023\nProblem 2\nTopics: algebra, number_theory\n\n(a)\nQ(5, 3) s t e\ndpo\nt o t e\ne seg\ne t w t\ne dpo\nts\n( , p) a d R(r, 5),\nwhat are the values of p and r?\n(b) A line with slope 3 and another line with slope −1 intersect at P(3, 6). What is\nthe distance between the x-intercepts of the two lines?\n(c) For some value of t, the line with equation y = tx + t is perpendicular to the line\nwith equation y = 2x + 7. Determine the point of intersection of these two lines.\n3.\n(a) The positive divisors of 6 are 1, 2, 3, and 6. What is the sum of the positive",
-      "contest": "Euclid",
-      "year": 2023,
-      "problem_number": 2,
-      "part": null,
-      "topics": [
-        "algebra",
-        "number_theory"
-      ],
-      "grades": [
-        12
-      ],
-      "has_solution": true,
-      "has_diagram": true,
-      "source_file": "2023EuclidContest.pdf",
-      "pdf_path": "Euclid/2023EuclidContest.pdf",
-      "solution_pdf_path": "Euclid/2023EuclidSolution.pdf",
-      "page_number": 1,
-      "solution_page_number": 1,
-      "solution_text": "(a) S\nce Q(5, 3) s t e\ndpo t o\n( , p) a d R(r, 5), t e\n2\n5 a d\n2\n3\nThus, 1 + r = 10 which gives r = 9, and p + 5 = 6 which gives p = 1.\nTherefore, p = 1 and r = 9.\n(b) Solution 1\nThe point with coordinates P(3, 6) is 6 units above the x-axis.\nA line with slope 3 moves 2 units to the right as it moves 6 units up. Therefore, to move\nfrom P(3, 6) to the x-axis along a line with slope 3 results in a move of 6 units down and\n2 units left. Thus, its x-intercept is 3 −2 = 1.\nA line with slope −1 moves 6 units to the left as it moves 6 units up. Therefore, to move\nfrom P(3, 6) to the x-axis along a line with slope −1 results in a move of 6 units down\nand 6 units right. Thus, its x-intercept is 3 + 6 = 9.\nThe distance between these x-intercepts is 9 −1 = 8.\nSolution 2\nThe line with slope 3 that passes through P(3, 6) has equation y −6 = 3(x −3) or\ny = 3x −3.\nThe x-intercept of this line has y = 0 and so 0 = 3x −3 or 3x = 3, which gives x = 1.\nThe line with slope −1 that passes through P(3, 6) has equation y −6 = (−1)(x −3) or\ny = −x + 9.\nThe x-intercept of this line has y = 0 and so 0 = −x + 9 or x = 9.\nThe distance between these x-intercepts is 9 −1 = 8.\n\n2023 Euclid Contest Solutions\nPage 3\n(c) The line with equation y = 2x + 7 has slope 2.\nThe line with equation y = tx + t has slope t.\nSince these lines are perpendicular, the product of their slopes is −1 and so 2t = −1 which\ngives t = −1\n2.\nWe now need to ﬁnd the point of intersection of the lines with equations y = 2x + 7 and\ny = −1\n2x −1\n2.\nEquating expressions for y, we obtain 2x+7 = −1\n2x−1\n2 or 5\n2x = −15\n2 , which gives x = −3.\nTherefore, y = 2x + 7 = 2(−3) + 7 = 1, and so the point of intersection of these lines is\n(−3, 1).\n3.\n(a) Since 64 = 26, its positive divisors are 1, 2, 4, 8, 16, 32, and 64."
-    },
-    {
-      "document": "Contest: Euclid 2023\nProblem 9\nTopics: number_theory, combinatorics\n\n9\nt t e Ca ad a\nate y w t\nu t p e Co\ngu at o s, t e e\nare round tables, around which chairs are placed.\nWhen\na table has n chairs around it for some integer n ≥3, the\nchairs are labelled 1, 2, 3, . . ., n −1, n in order around the\ntable.\nA table is considered full if no more people can be\nseated without having two people sit in neighbouring chairs.\nFor example, when n = 6, full tables occur when people are\nseated in chairs labelled {1, 4} or {2, 5} or {3, 6} or {1, 3, 5} or\n{2, 4, 6}. Thus, there are 5 diﬀerent full tables when n = 6.\n1\n4\n2\n3\n6\n5\n(a) Determine all ways in which people can be seated around a table with 8 chairs so\nthat the table is full, in each case giving the labels on the chairs in which people\nare sitting.\n(b) A full table with 6k + 5 chairs, for some positive integer k, has t people seated in\nits chairs. Determine, in terms of k, the number of possible values of t.\n(c) Determine the number of diﬀerent full tables when n = 19.\n\n10.\nFor every real number x, deﬁne ⌊x⌋to be equal to the greatest integer less than",
-      "contest": "Euclid",
-      "year": 2023,
-      "problem_number": 9,
-      "part": null,
-      "topics": [
-        "number_theory",
-        "combinatorics"
-      ],
-      "grades": [
-        12
-      ],
-      "has_solution": true,
-      "has_diagram": true,
-      "source_file": "2023EuclidContest.pdf",
-      "pdf_path": "Euclid/2023EuclidContest.pdf",
-      "solution_pdf_path": "Euclid/2023EuclidSolution.pdf",
-      "page_number": 3,
-      "solution_page_number": 12,
-      "solution_text": "9\n(a)\nt e e a e 5 o\no e peop e seated a ou d a tab e w t\n8 c a s, t e\nt e e a e at\nost\n3 empty chairs. But there must be an empty chair between each pair of people, and this\nis not possible with 5 people and 3 empty chairs.\nTherefore, there are at most 4 people seated.\nIf there were only 2 people seated, then there would be 6 empty chairs which would mean\nthat at least one of the two “gaps” around the circular table had at least 3 empty chairs,\nand so another person could be seated, meaning that the table wasn’t full.\nTherefore, there are at least 3 people seated.\nThis means that a full table with 8 chairs has either 3 or 4 people.\nIf there are 4 people, there are 4 empty chairs, and so there is exactly 1 empty chair\nbetween each pair of people.\nThus, people are seated in chairs {1, 3, 5, 7} or in chairs {2, 4, 6, 8}.\nIf there are 3 people, there are 5 empty chairs.\nWith 3 people, there are 3 gaps totalling 5 chairs, and each gap has at most 2 chairs in it.\nTherefore, the gaps must be 1, 2, 2 in some order. This is the only list of three positive\nintegers, each equal to 1 or 2, that adds to 5.\nThe gap of 1 can be between any pair of seats.\nIn other words, the gap of 1 could\nbe between {1, 3}, {2, 4}, and so on. In each case, the position of the third person is\ncompletely determined because the remaining two gaps have 2 chairs each.\nThus, with 3 people, they are seated in chairs\n{1, 3, 6}, {2, 4, 7}, {3, 5, 8}, {4, 6, 1}, {5, 7, 2}, {6, 8, 3}, {7, 1, 4}, {8, 2, 5}\nIn total, there are thus 10 ways to seat people at a table with 8 chairs:\n{1, 3, 5, 7}, {2, 4, 6, 8}, {1, 3, 6}, {2, 4, 7}, {3, 5, 8}, {4, 6, 1}, {5, 7, 2}, {6, 8, 3}, {7, 1, 4}, {8, 2, 5}\n(b) Suppose that k is a positive integer.\nSuppose that t people are seated at a table with 6k + 5 chairs so that the table is full.\nWhen t people are seated, there are t gaps. Each gap consists of either 1 or 2 chairs. (A\ngap with 3 or more chairs can have an additional person seated in it, so the table is not\nfull.)\nTherefore, there are between t and 2t empty chairs.\nThis means that the total number of chairs is between t + t and t + 2t.\nIn other words, 2t ≤6k + 5 ≤3t.\nSince 2t ≤6k + 5, then t ≤3k + 5\n2. Since k and t are integers, then t ≤3k + 2.\nWe note that it is possible to seat 3k + 2 people around the table in seats\n{2, 4, 6, . . . , 6k + 2, 6k + 4}\nThis table is full becase 3k +1 of the gaps consist of 1 chair and 1 gap consists of 2 chairs.\nSince 3t ≥6k + 5, then t ≥2k + 5\n3. Since k and t are integers, then t ≥2k + 2.\nWe note that it is possible to seat 2k + 2 people around the table in seats\n{3, 6, 9, . . . , 6k, 6k + 3, 6k + 5}\nThis table is full becase 2k +1 of the gaps consist of 2 chairs and 1 gap consists of 1 chair.\nWe now know that, if there are t people seated at a full table with 6k + 5 chairs, then\n2k + 2 ≤t ≤3k + 2.\nTo conﬁrm that every such value of t is possible, consider a table with t people, 3t−(6k+5)\n\n2023 Euclid Contest Solutions\nPage 14\ngaps of 1 chair, and (6k + 5) −2t gaps of 2 chairs.\nFrom the work above, we know that 3t ≥6k + 5 and so 3t −(6k + 5) ≥0, and that\n2t ≤6k + 5 and so (6k + 5) −2t ≥0.\nThe total number of gaps is 3t −(6k + 5) + (6k + 5) −2t = t, since there are t people\nseated.\nFinally, the total number of chairs is\nt + 1 · (3t −(6k + 5)) + 2 · ((6k + 5) −2t) = t + 3t −4t −(6k + 5) + 2(6k + 5) = 6k + 5\nas expected.\nThis shows that every t with 2k + 2 ≤t ≤3k + 2 can produce a full table.\nTherefore, the possible values of t are those integers that satisfy 2k + 2 ≤t ≤3k + 2.\nThere are (3k + 2) −(2k + 2) + 1 = k + 1 possible values of t.\n(c) Solution 1\nFor each integer n ≥3, we deﬁne f(n) to be the number of diﬀerent full tables of size n.\nWe can check that\n•\nf(3) = 3 because the full tables when n = 3 have people in chairs {1}, {2}, {3},\n•\nf(4) = 2 because the full tables when n = 4 have people in chairs {1, 3}, {2, 4}, and\n•\nf(5) = 5 because the full tables when n = 4 have people in chairs {1, 3}, {2, 4}, {3, 5},\n{4, 1}, {5, 2}.\nIn the problem, we are told that f(6) = 5 and in part (a), we determined that f(8) = 10.\nThis gives us the following table:\nn\nf(n)\n3\n3\n4\n2\n5\n5\n6\n5\n7\n?\n8\n10\nBased on this information, we make the guess that for every integer n ≥6, we have\nf(n) = f(n −2) + f(n −3).\nFor example, this would mean that f(7) = f(5) + f(4) = 5 + 2 = 7 which we can verify is\ntrue.\nBased on this recurrence relation (which we have yet to prove), we deduce the values of\nf(n) up to and including n = 19:\nn\nf(n)\n3\n3\n4\n2\n5\n5\n6\n5\n7\n7\n8\n10\n9\n12\n10\n17\nn\nf(n)\n11\n22\n12\n29\n13\n39\n14\n51\n15\n68\n16\n90\n17\n119\n18\n158\n19\n209\nWe now need to prove that the equation f(n) = f(n −2) + f(n −3) is true for all n ≥6.\n\n2023 Euclid Contest Solutions\nPage 15\nWe think about each full table as a string of 0s and 1s, with 1 representing a chair that is\noccupied and 0 representing an empty chair.\nLet a(n) be the number of full tables with someone in seat 1 (and thus nobody in seat 2).\nLet b(n) be the number of full tables with someone in seat 2 (and thus nobody in seat 1).\nLet c(n) be the number of full tables with nobody in seat 1 or in seat 2.\nSince every full table must be in one of these categories, then f(n) = a(n) + b(n) + c(n).\nA full table with n seats n ≥4 must correspond to a string that starts with 10, 01 or 00.\nSince there cannot be more than two consecutive 0s, we can further specify this, namely\nto say that a full table with n seats must correspond to a string that starts with 1010 or\n1001 or 0100 or 0101 or 0010. In each case, these are the ﬁrst 4 characters of the string\nand correspond to full (1) and empty (0) chairs.\nConsider the full tables starting with 1010. Note that such strings end with 0 since the\ntable is circular. Removing the 10 from positions 1 and 2 creates strings of length n −2\nthat begin 10. These strings will still correspond to a full table, and so there are a(n −2)\nsuch strings. (We note that all possible strings starting 1010 of length n will lead to all\npossible strings starting with 1010 of length n −2.)\nConsider the full tables starting with 1001. Note that such a string ends with 0 since the\ntable is circular. Removing the 100 from positions 1, 2 and 3 creates strings of length\nn −3 that begin 10. (There must have been a 0 in position 5 after the 1 in position 4.)\nThese strings will still correspond to full tables, and so there are a(n −3) such strings.\nConsider the full tables starting with 0100. Removing the 100 from positions 2, 3 and 4\ncreates strings of length n −3 that begin 01. (There must have been a 1 in position 5\nafter the 0 in position 4.) These strings will still correspond to full tables, and so there\nare b(n −3) such strings.\nConsider the full tables starting with 0101. Removing the 01 from positions 3 and 4 creates\nstrings of length n −2 that begin 01. (The 1 in position 4 must have been followed by one\nor two 0s and so these strings maintains the desired properties.) These strings will still\ncorrespond to full tables, and so there are b(n −2) such strings.\nConsider the full tables starting with 0010. These strings must begin with either 00100 or\n00101.\nIf strings start 00100, then they start 001001 and so we remove the 001 in positions 4, 5\nand 6 and obtain strings of length n −3 that start 001 (and thus start 00). There are\nc(n −3) such strings.\nIf strings start 00101, we remove the 01 in positions 4 and 5 and obtain strings of length\nn −2 that start 001 (and thus start 00). There are c(n −2) such strings.\nThese 6 cases and subcases count all strings counted by f(n).\nTherefore,\nf(n) = a(n −2) + a(n −3) + b(n −3) + b(n −2) + c(n −3) + c(n −2)\n= a(n −2) + b(n −2) + c(n −2) + a(n −3) + b(n −3) + c(n −3)\n= f(n −2) + f(n −3)\nas required, which means that the number of diﬀerent full tables when n = 19 is 209.\nSolution 2\nExtending our approach from (b), the number of people seated at a full table with 19\nchairs is at least 19\n3 = 61\n3 and at most 19\n2 = 91\n2.\nSince the number of people is an integer, there must be 7, 8 or 9 people at the table, whic"
-    },
-    {
-      "document": "Contest: Euclid 2023\nProblem 1\nTopics: logic\n\n(a)\ne ave age o n,\nn, 3n,\nn, 5n s\n8 W at s t e va ue o n\n(b) Suppose that 2x + y = 5 and x + 2y = 7. What is the average of x and y?\n(c) The average of t2, 2t and 3 is 9. If t < 0, determine the value of t.\n2.\n(a) If Q(5, 3) is the midpoint of the line segment with endpoints P(1, p) and R(r, 5),",
-      "contest": "Euclid",
-      "year": 2023,
-      "problem_number": 1,
-      "part": null,
-      "topics": [
-        "logic"
-      ],
-      "grades": [
-        12
-      ],
-      "has_solution": true,
-      "has_diagram": true,
-      "source_file": "2023EuclidContest.pdf",
-      "pdf_path": "Euclid/2023EuclidContest.pdf",
-      "solution_pdf_path": "Euclid/2023EuclidSolution.pdf",
-      "page_number": 1,
-      "solution_page_number": 1,
-      "solution_text": "(a) S\nce t e ave age o t e 5\nu be s n,\nn, 3n,\nn, a d 5n s\n8, we obta\nt e equat o\nn + 2n + 3n + 4n + 5n\n5\n= 18.\nTherefore, 15n\n5\n= 18 and so 3n = 18 or n = 6.\n(b) Solution 1\nAdding the equations 2x + y = 5 and x + 2y = 7, we obtain (2x + y) + (x + 2y) = 5 + 7\nand so 3x + 3y = 12.\nTherefore, the average of x and y is x + y\n2\n= 3x + 3y\n6\n= 12\n6 = 2.\nSolution 2\nSince 2x + y = 5, then 4x + 2y = 10.\nSubtracting the second equation, we obtain (4x + 2y) −(x + 2y) = 10 −7 which gives\n3x = 3 and so x = 1.\nThus, y = 5 −2x = 3.\nThe average of x and y is thus 1 + 3\n2\n= 2.\n(c) Since the average of the three numbers t2, 2t and 3 is 9, then t2 + 2t + 3\n3\n= 9.\nTherefore, t2 + 2t + 3 = 27 and so t2 + 2t −24 = 0 which gives (t + 6)(t −4) = 0.\nSince t < 0, then t = −6.\n2.\n(a) Since Q(5, 3) is the midpoint of P(1, p) and R(r, 5), then 1 + r = 5 and p + 5 = 3."
-    },
-    {
-      "document": "Contest: Euclid 2023\nProblem 7\nTopics: algebra, number_theory, combinatorics, logic\n\n7\n(a)\nbag co ta\ns 3 ed\na b es a d 6 b ue\na b es\ns a\ne\noves o e\na b e at\na time until the bag is empty. Each marble that they remove is chosen randomly\nfrom the remaining marbles. Given that the ﬁrst marble that Akshan removes is\nred and the third marble that they remove is blue, what is the probability that\nthe last two marbles that Akshan removes are both blue?\n(b) Determine the number of quadruples of positive integers (a, b, c, d) with\na < b < c < d that satisfy both of the following system of equations:\nac + ad + bc + bd = 2023\na + b + c + d = 296\n8.\n(a) Suppose that △ABC is right-angled at B and has AB\n= n(n + 1) and",
-      "contest": "Euclid",
-      "year": 2023,
-      "problem_number": 7,
-      "part": null,
-      "topics": [
-        "algebra",
-        "number_theory",
-        "combinatorics",
-        "logic"
-      ],
-      "grades": [
-        12
-      ],
-      "has_solution": true,
-      "has_diagram": true,
-      "source_file": "2023EuclidContest.pdf",
-      "pdf_path": "Euclid/2023EuclidContest.pdf",
-      "solution_pdf_path": "Euclid/2023EuclidSolution.pdf",
-      "page_number": 3,
-      "solution_page_number": 9,
-      "solution_text": "7\n(a)\nac\nposs b e o de\nw\nc\ns a\ne\noves t e\na b es co espo ds to a seque ce o 9\ncolours, 3 of which are red and 6 of which are blue.\nWe write these as sequences of 3 R’s and 6 B’s.\nSince are told that the ﬁrst marble is red and the third is blue, we would like to consider\nall sequences of the form\nR\nB\nThe 7 blanks must be ﬁlled with the remaining 2 R’s and 5 B’s.\nThere are\n\u00127\n2\n\u0013\n= 7 · 6\n2\n= 21 ways of doing this, because 2 of the 7 blanks must be chosen in\nwhich to place the R’s. (We could count these 21 ways directly by working systematically\nthrough the possible pairs of blanks.)\nOf these 21 ways, some have the last two marbles being blue.\nThese correspond to the sequences of the form\nR\nB\nB B\nIn these sequences, the 5 blanks must be ﬁlled with the remaining 2 R’s and 3 B’s.\nThere are\n\u00125\n2\n\u0013\n= 5 · 4\n2\n= 10 ways of doing this, because 2 of the 5 blanks must be chosen\nin which to place the R’s.\nTherefore, 10 of the 21 possible sequences end in two B’s, and so the probability that the\nlast two marbles removed are blue is 10\n21.\n(b) Factoring the ﬁrst equation, we obtain\nac + ad + bc + bd = a(c + d) + b(c + d) = (a + b)(c + d)\nWe now have the equations\n(a + b)(c + d) = 2023\n(a + b) + (c + d) = 296\nIf we let s = a + b and t = c + d, we obtain the equations\nst = 2023\ns + t = 296\nNoting that s and t are integers since a, b, c, and d are integers, we look for divisor pairs\nof 2023 whose sum is 296.\nTo ﬁnd the divisors of 2023, we ﬁrst ﬁnd its prime factorization:\n2023 = 7 · 289 = 7 · 172\nTherefore, the divisors of 2023 are 1, 7, 17, 119, 289, 2023.\nThis means that the divisor pairs of 2023 are\n2023 = 1 · 2023 = 7 · 289 = 17 · 119\nThe one divisor pair with a sum of 296 is 7 and 289. (Alternatively, we could have found\nthese by substituting t = 206 −s into st = 2023 and using the quadratic formula.)\n\n2023 Euclid Contest Solutions\nPage 11\nSince a < b < c < d, then a + b < c + d and so s = a + b = 7 and t = c + d = 289.\nSince a and b are positive integers with a < b and a + b = 7, then the possible pairs (a, b)\nare\n(a, b) = (1, 6), (2, 5), (3, 4)\nWe know that c and d are positive integers with c < d and c + d = 289, but also with\nb < c < d.\nWhen (a, b) = (1, 6), this means that the possibilities are\n(c, d) = (7, 282), (8, 281), (9, 280), . . . , (143, 146), (144, 145)\nThere are 144 −7 + 1 = 138 such pairs.\nWhen (a, b) = (2, 5), the possibilities are\n(c, d) = (6, 283), (7, 282), (8, 281), (9, 280), . . . , (143, 146), (144, 145)\nThere are 138 + 1 = 139 such pairs.\nWhen (a, b) = (3, 4), the possibilities are\n(c, d) = (5, 284), (6, 283), (7, 282), (8, 281), (9, 280), . . . , (143, 146), (144, 145)\nThere are 139 + 1 = 140 such pairs.\nIn total, there are 138 + 139 + 140 = 417 possible quadruples (a, b, c, d).\n8.\n(a) Since △ABC is right-angled at B, then"
-    },
-    {
-      "document": "Contest: Euclid 2023\nProblem 10\nTopics: algebra, number_theory, logic\n\n0\no\neve y\nea\nu\nbe\nx, de\ne ⌊x⌋to be equa to t e g eatest\ntege\ness t a\nor equal to x. (We call this the “ﬂoor” of x.) For example, ⌊4.2⌋= 4, ⌊5.7⌋= 5,\n⌊−3.4⌋= −4, ⌊0.4⌋= 0, and ⌊2⌋= 2.\n(a) Determine the integer equal to\n\u00161\n3\n\u0017\n+\n\u00162\n3\n\u0017\n+\n\u00163\n3\n\u0017\n+ . . . +\n\u001659\n3\n\u0017\n+\n\u001660\n3\n\u0017\n.\n(The sum has 60 terms.)\n(b) Determine a polynomial p(x) so that for every positive integer m > 4,\n⌊p(m)⌋=\n\u00161\n3\n\u0017\n+\n\u00162\n3\n\u0017\n+\n\u00163\n3\n\u0017\n+ . . . +\n\u0016m −2\n3\n\u0017\n+\n\u0016m −1\n3\n\u0017\n(The sum has m −1 terms.)\nA\npolynomial\nf(x)\nis\nan\nalgebraic\nexpression\nof\nthe\nform\nf(x) = anxn + an−1xn−1 + · · · + a1x + a0 for some integer n ≥0 and for\nsome real numbers an, an−1, . . . , a1, a0.\n(c) For each integer n ≥1, deﬁne f(n) to be equal to an inﬁnite sum:\nf(n) =\n\u0016\nn\n12 + 1\n\u0017\n+\n\u0016\n2n\n22 + 1\n\u0017\n+\n\u0016\n3n\n32 + 1\n\u0017\n+\n\u0016\n4n\n42 + 1\n\u0017\n+\n\u0016\n5n\n52 + 1\n\u0017\n+ · · ·\n(The sum contains the terms\n\u0016\nkn\nk2 + 1\n\u0017\nfor all positive integers k, and no other\nterms.)\nSuppose f(t + 1) −f(t) = 2 for some odd positive integer t. Prove that t is a\nprime number.",
-      "contest": "Euclid",
-      "year": 2023,
-      "problem_number": 10,
-      "part": null,
-      "topics": [
-        "algebra",
-        "number_theory",
-        "logic"
-      ],
-      "grades": [
-        12
-      ],
-      "has_solution": true,
-      "has_diagram": true,
-      "source_file": "2023EuclidContest.pdf",
-      "pdf_path": "Euclid/2023EuclidContest.pdf",
-      "solution_pdf_path": "Euclid/2023EuclidSolution.pdf",
-      "page_number": 4,
-      "solution_page_number": 16,
-      "solution_text": "0\n(a) S\nce 0 < 3 < 3 < , t e\n3\n3\n0\nSince 1 ≤3\n3 < 4\n3 < 5\n3 < 2, then\n\u00163\n3\n\u0017\n=\n\u00164\n3\n\u0017\n=\n\u00165\n3\n\u0017\n= 1.\nThese fractions can continue to be grouped in groups of 3 with the last full group of 3\nsatisfying 19 ≤57\n3 < 58\n3 < 59\n3 < 20, which means that\n\u001657\n3\n\u0017\n=\n\u001658\n3\n\u0017\n=\n\u001659\n3\n\u0017\n= 19.\nThe last term is\n\u001660\n3\n\u0017\n= ⌊20⌋= 20.\n\n2023 Euclid Contest Solutions\nPage 18\nIf the given sum is S, we obtain\nS = 2 · 0 + 3 · 1 + 3 · 2 + · · · + 3 · 19 + 1 · 20\n= 0 + 3(1 + 2 + · + 19) + 20\n= 3 · 1\n2 · 19 · 20 + 20\n= 570 + 20\n= 590\n(b) For every positive integer m > 4, let\nq(m) =\n\u00161\n3\n\u0017\n+\n\u00162\n3\n\u0017\n+\n\u00163\n3\n\u0017\n+ . . . +\n\u0016m −2\n3\n\u0017\n+\n\u0016m −1\n3\n\u0017\nExtending our work from (a), we know that k −1 ≤3k −3\n3\n< 3k −2\n3\n< 3k −1\n3\n< k for\neach positive integer k, and so\n\u00163k −3\n3\n\u0017\n=\n\u00163k −2\n3\n\u0017\n=\n\u00163k −1\n3\n\u0017\n= k −1.\nEvery positive integer m > 4 can be written as m = 3s or m = 3s + 1 or m = 3s + 2, for\nsome positive integer s, depending on its remainder when divided by 3.\nWe can thus write\nq(3s) =\n\u00161\n3\n\u0017\n+\n\u00162\n3\n\u0017\n+\n\u00163\n3\n\u0017\n+ . . . +\n\u00163s −2\n3\n\u0017\n+\n\u00163s −1\n3\n\u0017\n= 2 · 0 + 3(1 + 2 + 3 + · · · + (s −1))\n= 3 · 1\n2 · (s −1)s\n= 3s(s −1)\n2\n= 3s(3s −3)\n6\nq(3s + 1) =\n\u00161\n3\n\u0017\n+\n\u00162\n3\n\u0017\n+\n\u00163\n3\n\u0017\n+ . . . +\n\u00163s −2\n3\n\u0017\n+\n\u00163s −1\n3\n\u0017\n+\n\u00163s\n3\n\u0017\n= q(3s) + s\n= 3s(3s −3)\n6\n+ 3s · 2\n6\n= 3s(3s −1)\n6\nq(3s + 2) = q(3s + 1) +\n\u00163s + 1\n3\n\u0017\n= 3s(3s −1)\n6\n+ s\n= 3s(3s −1)\n6\n+ 3s · 2\n6\n= 3s(3s + 1)\n6\nWe want to ﬁnd a polynomial p(x) for which q(m) = ⌊p(m)⌋for every positive integer\nm > 4.\n\n2023 Euclid Contest Solutions\nPage 19\nIn other words, we want to ﬁnd a polynomial p(x) for which\n⌊p(3s)⌋= 3s(3s −3)\n6\n⌊p(3s + 1)⌋= 3s(3s −1)\n6\n⌊p(3s + 2)⌋= 3s(3s + 1)\n6\nfor every positive integer s.\nWe will show that the polynomial p(x) = (x −1)(x −2)\n6\nsatisﬁes the desired conditions.\nIf x = 3s + 1 for some positive integer s, then\n(x −1)(x −2)\n6\n= (3s + 1 −1)(3s + 1 −2)\n6\n= 3s(3s −1)\n6\nWe note that 3s is a multiple of 3. Since 3s and 3s −1 are consecutive integers, then one\nof these is a multiple of 2. Thus, 3s(3s −1) is a multiple of 6 and so 3s(3s −1)\n6\nis an\ninteger.\nThis means that\n\u00163s(3s −1)\n6\n\u0017\n= 3s(3s −1)\n6\n.\nTherefore, q(3s + 1) = 3s(3s −1)\n6\n=\n\u00163s(3s −1)\n6\n\u0017\n= ⌊p(3s + 1)⌋.\nIf x = 3s + 2 for some positive integer s, then\n(x −1)(x −2)\n6\n= (3s + 2 −1)(3s + 2 −2)\n6\n= 3s(3s + 1)\n6\nWe note that 3s is a multiple of 3. Since 3s and 3s + 1 are consecutive integers, then one\nof these is a multiple of 2. Thus, 3s(3s + 1) is a multiple of 6 and so 3s(3s + 1)\n6\nis an\ninteger.\nThis means that\n\u00163s(3s + 1)\n6\n\u0017\n= 3s(3s + 1)\n6\n.\nTherefore, q(3s + 2) = 3s(3s + 1)\n6\n=\n\u00163s(3s + 1)\n6\n\u0017\n= ⌊p(3s + 2)⌋.\nIf x = 3s for some positive integer s, then\n(x −1)(x −2)\n6\n= (3s −1)(3s −2)\n6\n= 9s2 −9s + 2\n6\nNow, 9s2 −9s\n6\n= 9s(s −1)\n6\nis an integer because 9s is a multiple of 3 and one of s and\ns −1 is even.\nSince 9s2 −9s + 2\n6\n= 9s2 −9s\n6\n+ 1\n3, then 9s2 −9s + 2\n6\nis 1\n3 more than an integer which\nmeans that\n\u00169s2 −9s + 2\n6\n\u0017\n= 9s2 −9s\n6\n= 3s(3s −3)\n6\n= q(3s).\nTherefore, q(3s) = 3s(3s −3)\n6\n=\n\u0016(3s −1)(3s −2)\n6\n\u0017\n= ⌊p(3s)⌋.\nThis means that the polynomial p(x) = (x −1)(x −2)\n6\nsatisﬁes the required conditions.\n\n2023 Euclid Contest Solutions\nPage 20\n(c) Before working on the speciﬁc question we have been asked, we simplify the given expres-\nsion for f(n) by noting that if k ≥n, then kn ≤k2 < k2 + 1.\nThis means that if k ≥n, we have 0 <\nkn\nn2 + 1 < 1 and so\n\u0016\nkn\nk2 + 1\n\u0017\n= 0.\nThis means that, for a ﬁxed positive integer n, the apparently inﬁnite sum that represents\nf(n) can be stopped when k = n −1 because every subsequent term equals 0.\nThus,\nf(n) =\n\u0016\nn\n12 + 1\n\u0017\n+\n\u0016\n2n\n22 + 1\n\u0017\n+\n\u0016\n3n\n32 + 1\n\u0017\n+ · · · +\n\u0016\n(n −2)n\n(n −2)2 + 1\n\u0017\n+\n\u0016\n(n −1)n\n(n −1)2 + 1\n\u0017\nWe note that\nf(1) = 0\n(since no terms are non-zero)\nf(2) =\n\u0016 1 · 2\n12 + 1\n\u0017\n= 1\nf(3) =\n\u0016 1 · 3\n12 + 1\n\u0017\n+\n\u0016 2 · 3\n22 + 1\n\u0017\n=\n\u00163\n2\n\u0017\n+\n\u00166\n5\n\u0017\n= 1 + 1 = 2\nf(4) =\n\u0016 1 · 4\n12 + 1\n\u0017\n+\n\u0016 2 · 4\n22 + 1\n\u0017\n+\n\u0016 3 · 4\n32 + 1\n\u0017\n=\n\u00164\n2\n\u0017\n+\n\u00168\n5\n\u0017\n+\n\u001612\n10\n\u0017\n= 2 + 1 + 1 = 4\nSuppose that t is an odd positive integer for which f(t + 1) −f(t) = 2.\nWe will assume that t is not a prime number, and show that f(t + 1) −f(t)̸ = 2. This will\nshow us that if f(t + 1) −f(t) = 2, it must be the case that t is prime. Since t is odd and\nnot prime, then t = 1 or t is composite.\nWe note that when t = 1, we obtain f(2) −f(1) = 1 −0 = 1̸ = 2.\nNext, suppose that t is odd and composite.\nSince t is odd and composite, then t can be written as t = rs for some odd positive integers\nr ≥s > 1. (t can be written in this form in at least one way, so we take one of these\npossibilities.)\nIn this case, consider f(t + 1) −f(t).\nWe can write this as\nf(t + 1) −f(t)\n=\n\u0016 t + 1\n12 + 1\n\u0017\n+\n\u00162(t + 1)\n22 + 1\n\u0017\n+ · · ·\n+\n\u0016(t −1)(t + 1)\n(t −1)2 + 1\n\u0017\n+\n\u0016t(t + 1)\nt2 + 1\n\u0017\n−\n\u0016\nt\n12 + 1\n\u0017\n−\n\u0016\n2t\n22 + 1\n\u0017\n−· · ·\n−\n\u0016\n(t −1)t\n(t −1)2 + 1\n\u0017\nWe re-write this as\nf(t + 1) −f(t) =\n\u0012\u0016 t + 1\n12 + 1\n\u0017\n−\n\u0016\nt\n12 + 1\n\u0017\u0013\n+\n\u0012\u00162(t + 1)\n22 + 1\n\u0017\n−\n\u0016\n2t\n22 + 1\n\u0017\u0013\n+ · · ·\n+\n\u0012\u0016(t −1)(t + 1)\n(t −1)2 + 1\n\u0017\n−\n\u0016\n(t −1)t\n(t −1)2 + 1\n\u0017\u0013\n+\n\u0016t(t + 1)\nt2 + 1\n\u0017\nIn the t−1 sets of parentheses, we have terms of the form\n\u0016k(t + 1)\nk2 + 1\n\u0017\n−\n\u0016\nkt\nk2 + 1\n\u0017\nfor each\ninteger k from 1 to t −1.\nWe know that k(t + 1)\nk2 + 1 >\nkt\nk2 + 1 because both k and t are positive, the denominators are\n\n2023 Euclid Contest Solutions\nPage 21\nequal and k(t + 1) > kt.\nThus,\n\u0016k(t + 1)\nk2 + 1\n\u0017\n≥\n\u0016\nkt\nk2 + 1\n\u0017\n. (The greatest integer less than or equal to the ﬁrst fraction\nmust be at least as large as the greatest integer less than or equal to the second fraction.)\nThis means that the t −1 diﬀerences in parentheses, each of which is an integer, is at\nleast 0.\nTo show that f(t+1)−f(t)̸ = 2, we show that there are at least 2 places where the diﬀerence\nis at least 1, and that the ﬁnal term is at least 1. This will tell us that f(t + 1) −f(t) ≥3\nand so f(t + 1) −f(t)̸ = 2, which will tell us that t cannot be composite, and so t must\nbe prime, as required.\nConsider\n\u0016t(t + 1)\nt2 + 1\n\u0017\n.\nSince t(t + 1) = t2 + t ≥t2 + 1, then t(t + 1)\nt2 + 1 ≥1, which means that\n\u0016t(t + 1)\nt2 + 1\n\u0017\n≥1.\nConsider\n\u0016 t + 1\n12 + 1\n\u0017\n−\n\u0016\nt\n12 + 1\n\u0017\n=\n\u0016t + 1\n2\n\u0017\n−\n\u0016 t\n2\n\u0017\n.\nSince t is odd, then we write t = 2u + 1 for some positive integer u, which gives\n\u0016t + 1\n2\n\u0017\n−\n\u0016 t\n2\n\u0017\n=\n\u00162u + 2\n2\n\u0017\n−\n\u00162u + 1\n2\n\u0017\n= ⌊u + 1⌋−\n\u0016\nu + 1\n2\n\u0017\n= (u + 1) −u = 1\nRecall that t = rs with r ≥s > 1.\nConsider the term\n\u0016r(t + 1)\nr2 + 1\n\u0017\n−\n\u0016\nrt\nr2 + 1\n\u0017\n.\nWe have\n\u0016r(t + 1)\nr2 + 1\n\u0017\n−\n\u0016\nrt\nr2 + 1\n\u0017\n=\n\u0016r(rs + 1)\nr2 + 1\n\u0017\n−\n\u0016 r · rs\nr2 + 1\n\u0017\n=\n\u0016r2s + r\nr2 + 1\n\u0017\n−\n\u0016 r2s\nr2 + 1\n\u0017\nWe note that r2s + r\nr2 + 1 ≥r2s + s\nr2 + 1 = s and\nr2s\nr2 + 1 < r2s + s\nr2 + 1 = s.\nThus,\n\u0016r2s + r\nr2 + 1\n\u0017\n≥s.\nAlso,\n\u0016 r2s\nr2 + 1\n\u0017\n< s which means\n\u0016 r2s\nr2 + 1\n\u0017\n≤s −1 and so\n\u0016r(t + 1)\nr2 + 1\n\u0017\n−\n\u0016\nrt\nr2 + 1\n\u0017\n≥1.\nTherefore, if t is odd and not prime, then f(t + 1) −f(t)̸ = 2 because we have found three\nterms that are equal to at least 1 meaning that f(t+1)−f(t) ≥3, and so if f(t+1)−f(t),\nthen t must be prime.\nHere is an alternative approach so show that f(t + 1) −f(t) ≥3 when t is odd and\ncomposite.\nAs above, we look for at least 3 integers k for which\n\u0016k(t + 1)\nk2 + 1\n\u0017\n−\n\u0016\nkt\nk2 + 1\n\u0017\n≥1. Here,\nwe allow for the possibility that k = t knowing that the second term in this diﬀerence will\nbe 0 in this case.\nThe positive integer k has the property that\n\u0016k(t + 1)\nk2 + 1\n\u0017\n−\n\u0016\nkt\nk2 + 1\n\u0017\n≥1 exactly when\nthere is an integer N for which k(t + 1)\nk2 + 1 ≥N >\nkt\nk2 + 1."
-    },
-    {
-      "document": "Contest: Euclid 2019\nProblem 8\nTopics: number_theory, geometry, trigonometry, logic\n\n8\n(a)\nc c e as ce t e O a d ad us\nQuad\nate a\nABCD has all 4 sides tangent to the circle\nat points P, Q, S, and T, as shown.\nAlso,\n∠AOB = ∠BOC = ∠COD = ∠DOA.\nIf\nAO = 3, determine the length of DS.\nC\nA\nB\nD\nP\nQ\nS\nT\nO\n(b) Suppose that x satisﬁes 0 < x < π\n2 and cos\n\u00123\n2 cos x\n\u0013\n= sin\n\u00123\n2 sin x\n\u0013\n.\nDetermine all possible values of sin 2x, expressing your answers in the form\naπ2 + bπ + c\nd\nwhere a, b, c, d are integers.\n\n9.\nFor positive integers a and b, deﬁne f(a, b) = a\nb + b + 1\nb.",
-      "contest": "Euclid",
-      "year": 2019,
-      "problem_number": 8,
-      "part": null,
-      "topics": [
-        "number_theory",
-        "geometry",
-        "trigonometry",
-        "logic"
-      ],
-      "grades": [
-        12
-      ],
-      "has_solution": true,
-      "has_diagram": true,
-      "source_file": "2019EuclidContest.pdf",
-      "pdf_path": "Euclid/2019EuclidContest.pdf",
-      "solution_pdf_path": "Euclid/2019EuclidSolution.pdf",
-      "page_number": 3,
-      "solution_page_number": 8,
-      "solution_text": "8\n(a) S\nce\nO\nOC\nCO\nO\na d t ese a g es o\na co\np ete c c e\naround O, then ∠AOB = ∠BOC = ∠COD = ∠DOA = 1\n4 · 360◦= 90◦.\nJoin point O to P, B, Q, C, S, D, T, and A.\nC\nA\nB\nD\nP\nQ\nS\nT\nSince P, Q, S, and T are points of tangency, then the radii meet the sides of ABCD at\nright angles at these points.\nSince AO = 3 and OT = 1 and ∠OTA = 90◦, then by the Pythagorean Theorem,\nAT =\n√\nAO2 −OT 2 =\n√\n8 = 2\n√\n2.\nSince △OTA is right-angled at T, then ∠TAO + ∠AOT = 90◦.\nSince ∠DOA = 90◦, then ∠AOT + ∠DOT = 90◦.\nThus, ∠TAO = ∠DOT.\nThis means that △ATO is similar to △OTD.\nThus, DT\nOT = OT\nAT and so DT = OT 2\nAT =\n1\n2\n√\n2.\nSince DS and DT are tangents to the circle from the same point, then DS = DT =\n1\n2\n√\n2.\n\n2019 Euclid Contest Solutions\nPage 10\n(b) Since 0 < x < π\n2 , then 0 < cos x < 1 and 0 < sin x < 1.\nThis means that 0 < 3\n2 cos x < 3\n2 and 0 < 3\n2 sin x < 3\n2. Since 3 < π, then 0 < 3\n2 cos x < π\n2\nand 0 < 3\n2 sin x < π\n2 .\nIf Y and Z are angles with 0 < Y < π\n2 and 0 < Z < π\n2 , then cos Y = sin Z exactly when\nY + Z = π\n2 . To see this, we could picture points R and S on the unit circle corresponding\nto the angles Y and Z; the x-coordinate of R is equal to the y-coordinate of S exactly\nwhen the angles Y and Z are complementary.\nTherefore, the following equations are equivalent:\ncos\n\u00123\n2 cos x\n\u0013\n= sin\n\u00123\n2 sin x\n\u0013\n3\n2 cos x + 3\n2 sin x = π\n2\ncos x + sin x = π\n3\n(sin x + cos x)2 = π2\n9\nsin2 x + 2 sin x cos x + cos2 x = π2\n9\n2 sin x cos x + (sin2 x + cos2 x) = π2\n9\nsin 2x + 1 = π2\n9\nsin 2x = π2 −9\n9\nTherefore, the only possible value of sin 2x is π2 −9\n9\n.\n\n2019 Euclid Contest Solutions\nPage 11\n9.\n(a) By deﬁnition, f(2, 5) = 2 + 5 +\n1\n= 2 · 2 + 5 · 5 + 1 = 4 + 25 + 1 = 30 = 3."
-    }
-  ],
+  "matches": [],
   "messages": [
     {
       "role": "user",
@@ -251,6 +24,46 @@
     {
       "role": "assistant",
       "content": "Here's 10 problems from Euclid:\n\n**1.** **Euclid 2023 — Problem 5**\nTopics: algebra, number_theory, geometry, trigonometry, logic\n_Solution available — click Show solution below the image._\n\n**2.** **Euclid 2023 — Problem 3**\nTopics: number_theory, sequences\n_Solution available — click Show solution below the image._\n\n**3.** **Euclid 2023 — Problem 4**\nTopics: number_theory, logic\n_Solution available — click Show solution below the image._\n\n**4.** **Euclid 2023 — Problem 6**\nTopics: geometry\n_Solution available — click Show solution below the image._\n\n**5.** **Euclid 2023 — Problem 2**\nTopics: algebra, number_theory\n_Solution available — click Show solution below the image._\n\n**6.** **Euclid 2023 — Problem 9**\nTopics: number_theory, combinatorics\n_Solution available — click Show solution below the image._\n\n**7.** **Euclid 2023 — Problem 1**\nTopics: logic\n_Solution available — click Show solution below the image._\n\n**8.** **Euclid 2023 — Problem 7**\nTopics: algebra, number_theory, combinatorics, logic\n_Solution available — click Show solution below the image._\n\n**9.** **Euclid 2023 — Problem 10**\nTopics: algebra, number_theory, logic\n_Solution available — click Show solution below the image._\n\n**10.** **Euclid 2019 — Problem 8**\nTopics: number_theory, geometry, trigonometry, logic\n_Solution available — click Show solution below the image._"
+    },
+    {
+      "role": "user",
+      "content": "hi"
+    },
+    {
+      "role": "assistant",
+      "content": "I’m not sure how to help with that yet. If you want to reach the Auxilium coordinators, email auxilium.mentorship@gmail.com. You can also try asking for a mentor match, a contest problem, or a question from the knowledge file."
+    },
+    {
+      "role": "user",
+      "content": "hi"
+    },
+    {
+      "role": "assistant",
+      "content": "I’m not sure how to help with that yet. If you want to reach the Auxilium coordinators, email auxilium.mentorship@gmail.com. You can also try asking for a mentor match, a contest problem, or a question from the knowledge file."
+    },
+    {
+      "role": "user",
+      "content": "hi"
+    },
+    {
+      "role": "assistant",
+      "content": "I’m not sure how to help with that yet. If you want to reach the Auxilium coordinators, email auxilium.mentorship@gmail.com. You can also try asking for a mentor match, a contest problem, or a question from the knowledge file."
+    },
+    {
+      "role": "user",
+      "content": "hi"
+    },
+    {
+      "role": "assistant",
+      "content": "I’m not sure how to help with that yet. If you want to reach the Auxilium coordinators, email auxilium.mentorship@gmail.com. You can also try asking for a mentor match, a contest problem, or a question from the knowledge file."
+    },
+    {
+      "role": "user",
+      "content": "hi"
+    },
+    {
+      "role": "assistant",
+      "content": "Hello! How can I help you today? Whether you want to continue working on those Euclid problems, tackle a different math question, or explore study tips, I'm here for you!"
     }
   ],
   "last_contest_prompt": "Internal agent request.\nTarget agent: contest\nUser request: i want a problem set 10 questions euclid\nUse the agent's normal rules to handle it.",
@@ -278,5 +91,7 @@
     "page_number": 2,
     "solution_page_number": 4,
     "solution_text": "5\n(a)\ne quad at c u ct o\nf(x)\nx + ( n\n)x + (n\n)\nas\no ea\noots e act y w e\nits discriminant, ∆, is negative.\nThe discriminant of this function is\n∆= (2n −1)2 −4(1)(n2 −22)\n= (4n2 −4n + 1) −(4n2 −88)\n= −4n + 89\nWe have ∆< 0 exactly when −4n + 89 < 0 or 4n > 89.\nThis ﬁnal inequality is equivalent to n > 89\n4 = 221\n4.\nTherefore, the smallest positive integer that satisﬁes this inequality, and hence for which\nf(x) has no real roots, is n = 23.\n(b) Using the cosine law in △PQR,\nPR2 = PQ2 + QR2 −2 · PQ · QR · cos(∠PQR)\n212 = a2 + b2 −2ab cos(60◦)\n441 = a2 + b2 −2ab · 1\n2\n441 = a2 + b2 −ab\nUsing the sine law in △STU, we obtain\nST\nsin(∠TUS) =\nTU\nsin(∠TSU) and so\na\n4/5 =\nb\nsin(30◦).\nTherefore,\na\n4/5 =\nb\n1/2 and so a = 4\n5 · 2b = 8\n5b.\nSubstituting into the previous equation,\n441 =\n\u0000 8\n5b\n\u00012 + b2 −\n\u0000 8\n5b\n\u0001\nb\n441 = 64\n25b2 + b2 −8\n5b2\n441 = 64\n25b2 + 25\n25b2 −40\n25b2\n441 = 49\n25b2\n225 = b2\nSince b > 0, then b = 15 and so a = 8\n5b = 8\n5 · 15 = 24.\n\n2023 Euclid Contest Solutions\nPage 6\n6.\n(a) Solution 1"
-  }
+  },
+  "session_id": "session_tnq0c5h",
+  "last_agent_prompt": "Internal agent request.\nTarget agent: general\nUser request: hi\nUse the agent's normal rules to handle it."
 }

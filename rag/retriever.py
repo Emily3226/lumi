@@ -7,14 +7,17 @@ ones for a given mentee query. Runs fully locally, no API needed.
 
 from __future__ import annotations
 
+import logging
+
 import numpy as np
-import os
-import sqlite3
 from sklearn.metrics.pairwise import cosine_similarity
 
+from api.db import get_db
 from rag.embeddings import get_embedding_function
 
 from rag.subject_utils import SUBJECT_ALIASES, expand_query_text, subject_key
+
+logger = logging.getLogger(__name__)
 
 # This model runs 100% locally — no API key needed
 MODEL_NAME = "all-MiniLM-L6-v2"
@@ -24,18 +27,11 @@ class MentorRetriever:
     def __init__(self, csv_path: str = "data/pairings.csv"):
         print("Loading embedding model (first run downloads ~90MB)...")
         self.model = get_embedding_function()
-        # Try to load mentors from the SQLite DB (only available mentors)
-        self.mentors = self._load_mentors_from_db() or self._load_mentors_from_csv(csv_path)
+        # Mentors live in MongoDB Atlas (see scripts/migrate_to_mongo.py); the
+        # CSV is only a last-resort fallback for local/offline dev.
+        self.mentors = self._load_mentors_from_mongo() or self._load_mentors_from_csv(csv_path)
         self.index = self._build_index()
         print(f"RAG index built - {len(self.mentors)} mentor profiles indexed")
-
-    def _connect_db(self):
-        db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "lumi.db")
-        if not os.path.exists(db_path):
-            return None
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        return conn
 
     def _alias_text(self, subject: str | None) -> str:
         key = subject_key(subject)
@@ -44,35 +40,41 @@ class MentorRetriever:
         aliases = ", ".join((key, *SUBJECT_ALIASES[key]))
         return f"{key}. Related topics: {aliases}."
 
-    def _load_mentors_from_db(self) -> list[dict] | None:
-        conn = self._connect_db()
-        if not conn:
+    def _load_mentors_from_mongo(self) -> list[dict] | None:
+        try:
+            rows = list(get_db()["mentors"].find({"available": {"$in": [1, True]}}))
+        except Exception:
+            logger.warning("Could not load mentors from MongoDB", exc_info=True)
             return None
-        cur = conn.execute("SELECT name, grade, qualifications, subject FROM mentors WHERE available = 1")
-        rows = cur.fetchall()
-        conn.close()
         if not rows:
             return None
         mentors = []
         for r in rows:
-            name = r['name']
+            name = r.get("name")
+            grade = r.get("grade")
+            subject = r.get("subject")
+            qualifications = r.get("qualifications")
             profile_text = (
-                f"{name} is a grade {r['grade']} student who wants to teach {r['subject']}. "
-                f"{self._alias_text(r['subject'])} "
-                f"Qualifications: {r['qualifications']}."
+                f"{name} is a grade {grade} student who wants to teach {subject}. "
+                f"{self._alias_text(subject)} "
+                f"Qualifications: {qualifications}."
             )
             mentors.append({
                 'name': name,
-                'grade': int(r['grade']) if r['grade'] is not None else 0,
-                'subject': r['subject'],
-                'qualifications': r['qualifications'],
+                'grade': int(grade) if grade is not None else 0,
+                'subject': subject,
+                'qualifications': qualifications,
                 'profile_text': profile_text,
             })
         return mentors
 
     def _load_mentors_from_csv(self, csv_path: str) -> list[dict]:
         import pandas as pd
-        df = pd.read_csv(csv_path)
+        try:
+            df = pd.read_csv(csv_path)
+        except (FileNotFoundError, OSError):
+            logger.warning("No mentor CSV fallback available at %s", csv_path)
+            return []
         seen = set()
         mentors = []
         for _, row in df.iterrows():

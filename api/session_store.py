@@ -1,38 +1,28 @@
 from __future__ import annotations
 
-import json
+import logging
 import os
-import random
-import re
-import time
-from pathlib import Path
+from datetime import datetime, timezone
 from typing import Any
 
+from api.db import get_db
 
-# Each session gets its own file (mirrors api/memory_store.py). The old
-# design kept every session in one chat_sessions.json and rewrote the WHOLE
-# file - every user's data - on every single chat turn from any user. That
-# made each request's cost grow with the total number of sessions ever
-# created (nothing expired them), and two uvicorn workers writing the same
-# file could clobber each other's latest state. Per-session files fix both:
-# a turn only touches its own small file, and stale sessions can be swept.
-SESSION_STORE_DIR = Path(__file__).resolve().parents[1] / "data" / "chat_sessions"
-_LEGACY_SESSION_STORE_PATH = Path(__file__).resolve().parents[1] / "data" / "chat_sessions.json"
+logger = logging.getLogger(__name__)
 
-# How long a per-session file can sit untouched before it's treated as stale
-# and deleted. Override with SESSION_TTL_DAYS; set to 0 to disable cleanup.
+# Chat sessions used to be per-session JSON files on local disk. That breaks
+# under Cloud Run (and any multi-instance deploy): each instance has its own
+# ephemeral disk, so consecutive turns of one conversation can land on
+# different instances and silently look like a brand-new session. MongoDB
+# Atlas is already the backing store for everything else in this app, so
+# sessions live there too now - one document per session_id.
+COLLECTION_NAME = "chat_sessions"
+
+# How long a session document can go untouched before MongoDB's TTL index
+# expires it. Override with SESSION_TTL_DAYS; set to 0 to disable expiry.
 SESSION_TTL_DAYS = int(os.environ.get("SESSION_TTL_DAYS", "30"))
 
-# save_session() also has a small chance of sweeping stale files so they
-# don't pile up between deploys on a long-running process.
-_CLEANUP_PROBABILITY_ON_SAVE = 0.01
-
-_SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_\-]")
-
-
-def _safe_path(session_id: str) -> Path:
-    safe_id = _SAFE_ID_RE.sub("_", session_id)[:128]
-    return SESSION_STORE_DIR / f"{safe_id}.json"
+# Mongo's own bookkeeping fields - never merged into the session dict itself.
+_RESERVED_FIELDS = ("_id", "updated_at")
 
 
 def new_session() -> dict[str, Any]:
@@ -50,85 +40,39 @@ def new_session() -> dict[str, Any]:
     }
 
 
-def _cleanup_stale_sessions(ttl_days: int = SESSION_TTL_DAYS) -> int:
-    """Delete per-session files that haven't been written to in `ttl_days`
-    days. Never raises - a failed sweep should never break an active chat.
-    """
-    if ttl_days <= 0:
-        return 0
-    removed = 0
-    try:
-        if not SESSION_STORE_DIR.exists():
-            return 0
-        cutoff = time.time() - (ttl_days * 86400)
-        for path in SESSION_STORE_DIR.glob("*.json"):
-            try:
-                if path.stat().st_mtime < cutoff:
-                    path.unlink()
-                    removed += 1
-            except OSError:
-                continue
-    except OSError:
-        pass
-    return removed
-
-
-def _migrate_legacy_store() -> None:
-    """One-time migration: split the old single-file store (if present)
-    into per-session files, then get out of the way.
-    """
-    if not _LEGACY_SESSION_STORE_PATH.exists():
+def _ensure_ttl_index() -> None:
+    if SESSION_TTL_DAYS <= 0:
         return
     try:
-        raw = _LEGACY_SESSION_STORE_PATH.read_text(encoding="utf-8")
-        data = json.loads(raw) if raw.strip() else {}
-    except (OSError, ValueError, json.JSONDecodeError):
-        data = {}
-
-    if isinstance(data, dict):
-        SESSION_STORE_DIR.mkdir(parents=True, exist_ok=True)
-        for session_id, payload in data.items():
-            if not (isinstance(session_id, str) and isinstance(payload, dict)):
-                continue
-            target = _safe_path(session_id)
-            if target.exists():
-                continue
-            session = new_session()
-            session.update(payload)
-            try:
-                target.write_text(json.dumps(session, ensure_ascii=False, indent=2), encoding="utf-8")
-            except OSError:
-                continue
-
-    try:
-        _LEGACY_SESSION_STORE_PATH.unlink()
-    except OSError:
-        pass
+        get_db()[COLLECTION_NAME].create_index(
+            "updated_at", expireAfterSeconds=SESSION_TTL_DAYS * 86400
+        )
+    except Exception:
+        logger.warning("Could not ensure TTL index on %s", COLLECTION_NAME, exc_info=True)
 
 
-_migrate_legacy_store()
-_cleanup_stale_sessions()
+_ensure_ttl_index()
 
 # In-memory cache of loaded sessions for this process, keyed by session_id.
 _session_cache: dict[str, dict[str, Any]] = {}
 
 
 def load_session(session_id: str) -> dict[str, Any]:
-    path = _safe_path(session_id)
-    if not path.exists():
-        return new_session()
-
     try:
-        raw = path.read_text(encoding="utf-8")
-        data = json.loads(raw) if raw.strip() else {}
-    except (OSError, ValueError, json.JSONDecodeError):
+        doc = get_db()[COLLECTION_NAME].find_one({"_id": session_id})
+    except Exception:
+        logger.warning("Failed to load session %r from MongoDB", session_id, exc_info=True)
         return new_session()
 
-    if not isinstance(data, dict):
+    if not doc:
         return new_session()
 
+    # agents.py stashes several ad-hoc keys on the session dict beyond the
+    # fixed set in new_session() (pending_slots, pending_mentee_email, etc.)
+    # - persist and restore whatever is actually there, not a fixed allowlist,
+    # or those fields silently vanish on the next turn.
     session = new_session()
-    session.update(data)
+    session.update({k: v for k, v in doc.items() if k not in _RESERVED_FIELDS})
     if not isinstance(session.get("messages"), list):
         session["messages"] = []
     if not isinstance(session.get("matches"), list):
@@ -137,30 +81,26 @@ def load_session(session_id: str) -> dict[str, Any]:
 
 
 def get_session(session_id: str) -> dict[str, Any]:
-    # Always re-read from disk rather than trusting a cached in-memory copy.
-    # With `--workers 2` in production, each worker is a separate process; if
-    # consecutive turns of the same conversation land on different workers (a
-    # normal occurrence with multiple workers, no session affinity), a stale
-    # in-memory copy would silently look like a brand-new session and reset
-    # the whole flow (e.g. mid-booking state getting wiped). The per-session
-    # file is small, so re-reading it on every call is cheap and keeps every
-    # worker seeing whichever worker wrote last.
+    # Always re-read from MongoDB rather than trusting a cached in-memory
+    # copy. With multiple instances/workers, consecutive turns of the same
+    # conversation can land on different processes with no session affinity;
+    # a stale in-memory copy would silently look like a brand-new session and
+    # reset the whole flow (e.g. mid-booking state getting wiped).
     _session_cache[session_id] = load_session(session_id)
     return _session_cache[session_id]
 
 
 def save_session(session_id: str) -> None:
-    """Persist the given session's current in-memory state to disk."""
+    """Persist the given session's current in-memory state to MongoDB."""
     session = _session_cache.get(session_id)
     if session is None:
         return
-    SESSION_STORE_DIR.mkdir(parents=True, exist_ok=True)
-    path = _safe_path(session_id)
-    temp_path = path.with_suffix(".tmp")
-    temp_path.write_text(json.dumps(session, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp_path.replace(path)
-    if random.random() < _CLEANUP_PROBABILITY_ON_SAVE:
-        _cleanup_stale_sessions()
+    doc = {k: v for k, v in session.items() if k not in _RESERVED_FIELDS}
+    doc["updated_at"] = datetime.now(timezone.utc)
+    try:
+        get_db()[COLLECTION_NAME].replace_one({"_id": session_id}, doc, upsert=True)
+    except Exception:
+        logger.warning("Failed to save session %r to MongoDB", session_id, exc_info=True)
 
 
 def reset_session(session_id: str) -> None:

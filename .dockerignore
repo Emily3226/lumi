@@ -1,0 +1,10 @@
+.venv/
+.git/
+__pycache__/
+**/__pycache__/
+*.pyc
+.env
+data/chat_sessions/
+data/user_memory/
+data/embedding_cache/
+data/pdf_cache/

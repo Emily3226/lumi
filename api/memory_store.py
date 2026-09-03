@@ -1,67 +1,40 @@
 from __future__ import annotations
 
-import json
+import logging
 import os
-import random
 import re
-import time
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any
 
+from api.db import get_db
 
-# Each session gets its own memory file so one user's conversation can never
-# wipe or bleed into another user's. Legacy single-file store (pre-fix) is
-# kept only as a fallback default filename.
-MEMORY_STORE_DIR = Path(__file__).resolve().parents[1] / "data" / "user_memory"
-_LEGACY_MEMORY_STORE_PATH = Path(__file__).resolve().parents[1] / "data" / "user_memory.json"
+logger = logging.getLogger(__name__)
+
+# Per-user memory (facts/summary/examples) used to be per-session JSON files
+# on local disk - broken under Cloud Run / any multi-instance deploy for the
+# same reason as api/session_store.py. MongoDB Atlas is already the backing
+# store for the rest of the app, so memory lives there too now.
+COLLECTION_NAME = "user_memory"
 MAX_FACTS = 60
 MAX_EXAMPLES = 12
 
-# How long a per-session memory file can sit untouched before it's treated as
-# stale and deleted. Override with the MEMORY_TTL_DAYS env var; set it to 0
-# to disable cleanup entirely.
+# How long a memory document can go untouched before MongoDB's TTL index
+# expires it. Override with MEMORY_TTL_DAYS; set it to 0 to disable expiry.
 MEMORY_TTL_DAYS = int(os.environ.get("MEMORY_TTL_DAYS", "30"))
 
-# Cleanup runs once at import time (server startup) so restarts always sweep.
-# For long-running processes that rarely restart, save_memory() also has a
-# small random chance of triggering a sweep so stale files don't just pile
-# up indefinitely between deploys.
-_CLEANUP_PROBABILITY_ON_SAVE = 0.01
 
-_SAFE_ID_RE = re.compile(r"[^A-Za-z0-9_\-]")
-
-
-def _cleanup_stale_memory_files(ttl_days: int = MEMORY_TTL_DAYS) -> int:
-    """Delete per-session memory files under MEMORY_STORE_DIR that haven't
-    been written to in `ttl_days` days. Returns the number of files removed.
-
-    Never raises - a failed cleanup sweep should never break saving or
-    loading memory for an active session. Only touches per-session files in
-    MEMORY_STORE_DIR; the legacy single-file store is left alone.
-    """
-    if ttl_days <= 0:
-        return 0
-    removed = 0
+def _ensure_ttl_index() -> None:
+    if MEMORY_TTL_DAYS <= 0:
+        return
     try:
-        if not MEMORY_STORE_DIR.exists():
-            return 0
-        cutoff = time.time() - (ttl_days * 86400)
-        for path in MEMORY_STORE_DIR.glob("*.json"):
-            try:
-                if path.stat().st_mtime < cutoff:
-                    path.unlink()
-                    removed += 1
-            except OSError:
-                continue
-    except OSError:
-        pass
-    return removed
+        get_db()[COLLECTION_NAME].create_index(
+            "updated_at", expireAfterSeconds=MEMORY_TTL_DAYS * 86400
+        )
+    except Exception:
+        logger.warning("Could not ensure TTL index on %s", COLLECTION_NAME, exc_info=True)
 
 
-# Sweep once at startup so files from long-idle sessions get cleared even if
-# the process restarts frequently (e.g. during development).
-_cleanup_stale_memory_files()
+_ensure_ttl_index()
 
 
 def _default_memory() -> dict[str, Any]:
@@ -73,33 +46,26 @@ def _default_memory() -> dict[str, Any]:
     }
 
 
-def _memory_path(session_id: str | None) -> Path:
-    if not session_id:
-        return _LEGACY_MEMORY_STORE_PATH
-    safe_id = _SAFE_ID_RE.sub("_", session_id)[:128]
-    return MEMORY_STORE_DIR / f"{safe_id}.json"
+def _memory_key(session_id: str | None) -> str:
+    return session_id or ""
 
 
 def load_memory(session_id: str | None = None) -> dict[str, Any]:
-    path = _memory_path(session_id)
-    if not path.exists():
-        return _default_memory()
-
     try:
-        raw = path.read_text(encoding="utf-8")
-        data = json.loads(raw) if raw.strip() else {}
-    except (OSError, ValueError, json.JSONDecodeError):
+        doc = get_db()[COLLECTION_NAME].find_one({"_id": _memory_key(session_id)})
+    except Exception:
+        logger.warning("Failed to load memory for session %r from MongoDB", session_id, exc_info=True)
         return _default_memory()
 
-    if not isinstance(data, dict):
+    if not doc:
         return _default_memory()
 
     memory = _default_memory()
-    memory.update(data)
-    if not isinstance(memory.get("facts"), list):
-        memory["facts"] = []
-    if not isinstance(memory.get("examples"), list):
-        memory["examples"] = []
+    memory["summary"] = doc.get("summary") or ""
+    memory["facts"] = doc["facts"] if isinstance(doc.get("facts"), list) else []
+    memory["examples"] = doc["examples"] if isinstance(doc.get("examples"), list) else []
+    updated_at = doc.get("updated_at")
+    memory["updated_at"] = updated_at.isoformat() if hasattr(updated_at, "isoformat") else (updated_at or "")
     return memory
 
 
@@ -109,25 +75,36 @@ _memory_cache: dict[str, dict[str, Any]] = {}
 
 
 def _get_memory(session_id: str | None) -> dict[str, Any]:
-    # Always re-read from disk rather than trusting a cached in-memory copy -
-    # see the identical comment in api/session_store.py:get_session(). With
-    # multiple uvicorn workers, a stale per-process cache can silently hide
-    # facts/examples another worker already persisted for this session.
-    key = session_id or ""
+    # Always re-read from MongoDB rather than trusting a cached in-memory
+    # copy - see the identical comment in api/session_store.py:get_session().
+    # With multiple instances, a stale per-process cache can silently hide
+    # facts/examples another instance already persisted for this session.
+    key = _memory_key(session_id)
     _memory_cache[key] = load_memory(session_id)
     return _memory_cache[key]
 
 
 def save_memory(session_id: str | None = None) -> None:
-    memory = _get_memory(session_id)
-    memory["updated_at"] = datetime.now(timezone.utc).isoformat()
-    path = _memory_path(session_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_suffix(".tmp")
-    temp_path.write_text(json.dumps(memory, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp_path.replace(path)
-    if random.random() < _CLEANUP_PROBABILITY_ON_SAVE:
-        _cleanup_stale_memory_files()
+    # Persist whatever the caller mutated in place on the cached dict (see
+    # observe_turn/clear_session_memory below) - this must NOT call
+    # _get_memory() here, since that would reload the pre-mutation copy from
+    # MongoDB and silently discard every fact/example just extracted.
+    key = _memory_key(session_id)
+    memory = _memory_cache.get(key)
+    if memory is None:
+        return
+    now = datetime.now(timezone.utc)
+    memory["updated_at"] = now.isoformat()
+    doc = {
+        "summary": memory.get("summary", ""),
+        "facts": memory.get("facts", []),
+        "examples": memory.get("examples", []),
+        "updated_at": now,
+    }
+    try:
+        get_db()[COLLECTION_NAME].replace_one({"_id": key}, doc, upsert=True)
+    except Exception:
+        logger.warning("Failed to save memory for session %r to MongoDB", session_id, exc_info=True)
 
 
 def clear_session_memory(session_id: str | None = None) -> None:
@@ -136,9 +113,9 @@ def clear_session_memory(session_id: str | None = None) -> None:
     Intended to be called whenever that specific conversation/session is
     reset, so facts, summaries, and examples from its previous history don't
     leak into the new one. This only ever touches the given session_id's
-    memory file - never any other user's.
+    memory document - never any other user's.
     """
-    key = session_id or ""
+    key = _memory_key(session_id)
     _memory_cache[key] = _default_memory()
     save_memory(session_id)
 

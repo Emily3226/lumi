@@ -45,7 +45,6 @@ load_dotenv_once()
 
 
 def _credentials() -> tuple[str, str] | None:
-    _load_dotenv_file()
     api_key = os.getenv("RESEND_API_KEY", "").strip()
     from_email = os.getenv("RESEND_FROM_EMAIL", DEFAULT_FROM_EMAIL).strip()
     if not api_key:
