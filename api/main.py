@@ -37,13 +37,14 @@ from fastapi.responses import RedirectResponse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 # dev reload marker
 
 from api.admin import router as admin_router
+from api.admin_auth import require_admin_key
 from api.chat import router as chat_router
 from api.contest_router import router as contest_router
 from api.contest_image_router import router as image_router
@@ -51,7 +52,7 @@ from api.services import book_pairing_in_db, get_db, get_mentor_slots, init_db, 
 
 app = FastAPI(title="Lumi Mentor Matcher")
 app.include_router(chat_router)
-app.include_router(admin_router, prefix="/admin")
+app.include_router(admin_router, prefix="/admin", dependencies=[Depends(require_admin_key)])
 app.include_router(contest_router, prefix="/contest")
 app.include_router(image_router, prefix="/contest")
 

@@ -82,12 +82,34 @@
     </div>
 
     <script>
-      const API = 'http://localhost:8000/admin';
+      const API = (window.LUMI_API_BASE || (location.hostname === 'localhost' || location.hostname === '127.0.0.1' ? 'http://localhost:8000' : '')) + '/admin';
       const tableBody = document.querySelector('#mentors tbody');
       let allMentors = [];
 
+      // The admin panel requires an X-Admin-Key header (see api/admin_auth.py).
+      // Ask for it once, remember it for this browser, and re-ask if the
+      // server ever rejects it (wrong key, or it was rotated).
+      function getAdminKey(forcePrompt = false) {
+        let key = localStorage.getItem('lumi_admin_key');
+        if (forcePrompt || !key) {
+          key = window.prompt('Enter the admin key:', key || '') || '';
+          localStorage.setItem('lumi_admin_key', key);
+        }
+        return key;
+      }
+
+      async function adminFetch(url, options = {}) {
+        const headers = { ...(options.headers || {}), 'X-Admin-Key': getAdminKey() };
+        let r = await fetch(url, { ...options, headers });
+        if (r.status === 401) {
+          const headers2 = { ...(options.headers || {}), 'X-Admin-Key': getAdminKey(true) };
+          r = await fetch(url, { ...options, headers: headers2 });
+        }
+        return r;
+      }
+
       async function load(){
-        const r = await fetch(API + '/mentors');
+        const r = await adminFetch(API + '/mentors');
         allMentors = await r.json();
         tableBody.innerHTML = '';
 
@@ -110,7 +132,7 @@
           const btn = document.createElement('button');
           btn.textContent = m.available? 'Mark Unavailable':'Mark Available';
           btn.onclick = async ()=>{
-            await fetch(API + '/mentors/' + encodeURIComponent(m.name) + '/availability?available=' + (m.available?0:1), {method:'POST'});
+            await adminFetch(API + '/mentors/' + encodeURIComponent(m.name) + '/availability?available=' + (m.available?0:1), {method:'POST'});
             load();
           };
           td.appendChild(btn);
@@ -121,7 +143,7 @@
 
       async function loadBookings(){
         const bbody = document.querySelector('#bookings tbody');
-        const r = await fetch(API + '/bookings');
+        const r = await adminFetch(API + '/bookings');
         const data = await r.json();
         bbody.innerHTML = '';
         data.forEach(b => {
@@ -131,12 +153,12 @@
           if((b.status||'active') === 'active'){
             const cancel = document.createElement('button');
             cancel.textContent = 'Cancel';
-            cancel.onclick = async ()=>{ await fetch(API + '/bookings/' + b.id + '/cancel', {method:'POST'}); load(); };
+            cancel.onclick = async ()=>{ await adminFetch(API + '/bookings/' + b.id + '/cancel', {method:'POST'}); load(); };
             td.appendChild(cancel);
           } else {
             const rel = document.createElement('button');
             rel.textContent = 'Release Mentor';
-            rel.onclick = async ()=>{ await fetch(API + '/bookings/' + b.id + '/release-mentor', {method:'POST'}); load(); };
+            rel.onclick = async ()=>{ await adminFetch(API + '/bookings/' + b.id + '/release-mentor', {method:'POST'}); load(); };
             td.appendChild(rel);
           }
           bbody.appendChild(tr);
@@ -160,7 +182,7 @@
         section.style.display = 'block';
         title.textContent = `Slots for: ${mentorName}`;
 
-        const r = await fetch(API + `/mentors/${encodeURIComponent(mentorName)}/slots?all=true`);
+        const r = await adminFetch(API + `/mentors/${encodeURIComponent(mentorName)}/slots?all=true`);
         const slots = await r.json();
         tbody.innerHTML = '';
         if (!slots.length) {
@@ -177,7 +199,7 @@
             del.className = 'del-btn';
             del.onclick = async () => {
               if (!confirm(`Delete slot ${s.slot_date} ${s.start_time}–${s.end_time}?`)) return;
-              await fetch(API.replace('/admin','') + `/admin/slots/${s.id}`, {method:'DELETE'});
+              await adminFetch(API.replace('/admin','') + `/admin/slots/${s.id}`, {method:'DELETE'});
               loadSlots(mentorName);
             };
             td.appendChild(del);
@@ -194,7 +216,7 @@
         const startTime  = document.getElementById('slot-start').value;
         if (!mentorName) { alert('Select a mentor first.'); return; }
         if (!dayOfWeek || !startTime) { alert('Please choose a day and start time.'); return; }
-        const r = await fetch(API + `/mentors/${encodeURIComponent(mentorName)}/slots`, {
+        const r = await adminFetch(API + `/mentors/${encodeURIComponent(mentorName)}/slots`, {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({day_of_week: dayOfWeek, start_time: startTime}),
@@ -212,7 +234,7 @@
       document.getElementById('add-form').onsubmit = async (e)=>{
         e.preventDefault();
         const body = {name:document.getElementById('name').value, grade:parseInt(document.getElementById('grade').value)||12, subject:document.getElementById('subject').value, qualifications:document.getElementById('qual').value};
-        await fetch(API + '/mentors', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+        await adminFetch(API + '/mentors', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
         load();
       };
       load();
