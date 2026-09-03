@@ -12,7 +12,7 @@ Thumbs.db
 
 # Tests
 check_env.py
-tests/
+.pytest_cache/
 
 # Python bytecode / packaging
 __pycache__/
