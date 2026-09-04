@@ -1,8 +1,12 @@
+from dataclasses import asdict
+
+import jinja2
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
 from api.db import get_db as _get_db
+from api.pairing_emails import parse_pairings_csv, render_emails, send_rendered_email
 from api.services import add_mentor_slot, delete_mentor_slot, get_mentor_slots
 
 router = APIRouter()
@@ -141,3 +145,76 @@ def remove_slot(slot_id: int):
     if not deleted:
         raise HTTPException(status_code=404, detail="Slot not found")
     return {"status": "deleted", "slot_id": slot_id}
+
+
+# ── Pairing announcement emails ───────────────────────────────────────────────
+# Bulk mentor/mentee pairing emails rendered from a CSV + Jinja2 templates.
+# See api/pairing_emails.py for the CSV format and template variables.
+
+class PairingEmailRenderRequest(BaseModel):
+    csv_text: str
+    mentor_template: str
+    mentee_template: str
+    subject_template: str
+    extra_vars: dict[str, str] = {}
+
+
+@router.post("/pairing-emails/preview")
+def preview_pairing_emails(req: PairingEmailRenderRequest):
+    """Render every mentor/mentee email WITHOUT sending anything - always the
+    first step before /pairing-emails/send.
+    """
+    try:
+        mentors = parse_pairings_csv(req.csv_text)
+        rendered = render_emails(
+            mentors, req.mentor_template, req.mentee_template, req.subject_template, req.extra_vars
+        )
+    except jinja2.TemplateError as exc:
+        raise HTTPException(status_code=400, detail=f"Template error: {exc}")
+
+    return {
+        "mentor_count": len(mentors),
+        "email_count": len(rendered),
+        "emails": [asdict(e) for e in rendered],
+    }
+
+
+class PairingEmailSendRequest(PairingEmailRenderRequest):
+    # Must be exactly "SEND" - a deliberate speed bump before a real batch
+    # send to real families goes out, on top of whatever the UI already asks.
+    confirm: str
+    # Optional ISO-8601 datetime. If set, Resend schedules delivery for then
+    # instead of sending immediately.
+    scheduled_at: Optional[str] = None
+
+
+@router.post("/pairing-emails/send")
+def send_pairing_emails(req: PairingEmailSendRequest):
+    if req.confirm != "SEND":
+        raise HTTPException(status_code=400, detail="Confirmation text must be exactly 'SEND'.")
+
+    try:
+        mentors = parse_pairings_csv(req.csv_text)
+        rendered = render_emails(
+            mentors, req.mentor_template, req.mentee_template, req.subject_template, req.extra_vars
+        )
+    except jinja2.TemplateError as exc:
+        raise HTTPException(status_code=400, detail=f"Template error: {exc}")
+
+    results = []
+    for email in rendered:
+        ok, detail = send_rendered_email(email, scheduled_at=req.scheduled_at)
+        results.append({
+            "to": email.to,
+            "recipient_type": email.recipient_type,
+            "mentor_name": email.mentor_name,
+            "mentee_names": email.mentee_names,
+            "ok": ok,
+            "detail": detail,
+        })
+
+    return {
+        "sent": sum(1 for r in results if r["ok"]),
+        "failed": sum(1 for r in results if not r["ok"]),
+        "results": results,
+    }

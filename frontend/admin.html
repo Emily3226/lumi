@@ -145,6 +145,52 @@
           </table>
         </div>
       </div>
+
+      <!-- ── Pairing Announcement Emails ─────────────────────────────── -->
+      <div class="panel">
+        <h2>Pairing Announcement Emails</h2>
+        <div class="empty-hint" style="margin-bottom:10px">
+          Upload a pairings CSV, edit the two templates below, then Preview before sending anything. Nothing is ever sent without typing the confirmation word.
+        </div>
+
+        <label>Pairings CSV<input type="file" id="pe-csv-file" accept=".csv" /></label>
+
+        <label>Subject line template<input id="pe-subject-template" value="Mentor-Mentee Pairings" /></label>
+
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px">
+          <div style="flex:1;min-width:280px">
+            <label>Mentor email template (Jinja2 — variables: mentor, mentees, + your extra variables below)</label>
+            <textarea id="pe-mentor-template" rows="14" style="width:100%;font-family:monospace;font-size:12.5px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-top:5px;box-sizing:border-box"></textarea>
+          </div>
+          <div style="flex:1;min-width:280px">
+            <label>Mentee email template (Jinja2 — variables: mentor, mentee, + your extra variables below)</label>
+            <textarea id="pe-mentee-template" rows="14" style="width:100%;font-family:monospace;font-size:12.5px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-top:5px;box-sizing:border-box"></textarea>
+          </div>
+        </div>
+
+        <label>Extra template variables (one per line, <code>key=value</code> — e.g. cycle_start=July 5)</label>
+        <textarea id="pe-extra-vars" rows="4" style="width:100%;font-family:monospace;font-size:12.5px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-top:5px;box-sizing:border-box">cycle_start=
+cycle_end=
+session_start_window=
+followup_date=</textarea>
+
+        <div>
+          <button type="button" id="pe-preview-btn">Preview Emails</button>
+        </div>
+
+        <div id="pe-summary" style="display:none;margin-top:14px;font-size:13.5px;font-weight:600"></div>
+        <div id="pe-preview-list" style="margin-top:8px;max-height:420px;overflow:auto"></div>
+
+        <div id="pe-send-section" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)">
+          <label>Type <code>SEND</code> to enable sending<input id="pe-confirm" placeholder="SEND" /></label>
+          <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:10px">
+            <button type="button" id="pe-send-now-btn" class="del-btn" style="margin-top:0">Send Now</button>
+            <label style="margin:0">Or schedule for<input type="datetime-local" id="pe-schedule-at" style="margin-top:5px" /></label>
+            <button type="button" id="pe-schedule-btn" style="margin-top:0">Schedule Send</button>
+          </div>
+          <div id="pe-send-result" style="margin-top:12px;font-size:13px"></div>
+        </div>
+      </div>
     </div>
 
     <script>
@@ -296,6 +342,183 @@
           return;
         }
         loadSlots(mentorName);
+      };
+
+      // ── Pairing announcement emails ────────────────────────────────────
+      const PE_DEFAULT_MENTOR_TEMPLATE = `Hello {{ mentor.name }},
+
+Thank you for applying to be a mentor with Auxilium. We're happy to have you and we're looking forward to you making a positive impact on other students' education. Your {{ "mentees are" if mentees|length > 1 else "mentee is" }} as follows.
+
+{% for mentee in mentees %}
+{% if mentees|length > 1 %}Mentee #{{ loop.index }}
+{% endif %}Name: {{ mentee.name }}
+{% if mentee.email2 %}Email #1: {{ mentee.email }}
+Email #2: {{ mentee.email2 }}
+{% else %}Email: {{ mentee.email }}
+{% endif %}Phone number: {{ mentee.phone }}
+Grade: {{ mentee.grade }}
+Subjects to mentor: {{ mentee.subjects }}
+
+{% endfor %}
+{% if mentees | selectattr("email2") | list | length > 0 %}
+You may have noticed that we provided 2 emails for {{ "some of your mentees" if mentees|length > 1 else "your mentee" }}. When you first reach out, please email both and ask which they prefer as their primary contact - we keep two on file because one is sometimes checked more often than the other.
+
+{% endif %}
+Please note that Auxilium is a weekly commitment and that you must meet at least once a week. Auxilium does one-on-one mentorships, so your weekly time commitment is one hour per mentee.
+
+This cycle starts on {{ cycle_start }} and ends on {{ cycle_end }}. Please email your {{ "mentees" if mentees|length > 1 else "mentee" }} and set up your first session for the week of {{ session_start_window }}. If they don't respond after a few tries, please wait until {{ followup_date }} before emailing us, and we'll assign a new pairing.
+
+Feel free to reach out to us if you have any questions. Happy mentoring!
+
+All the best,
+The Auxilium Team`;
+
+      const PE_DEFAULT_MENTEE_TEMPLATE = `Hello {{ mentee.name }},
+
+Thank you for registering to be a mentee for Auxilium. Your assigned mentor is as follows.
+
+Name: {{ mentor.name }}
+{% if mentor.email2 %}Email #1: {{ mentor.email }}
+Email #2: {{ mentor.email2 }}
+{% else %}Email: {{ mentor.email }}
+{% endif %}Phone number: {{ mentor.phone }}
+
+This cycle starts on {{ cycle_start }} and ends on {{ cycle_end }}. Please email your mentor and set up your first session for the week of {{ session_start_window }}. Please note that the expectation for both mentors and mentees is to have your cameras turned on throughout all meetings.
+
+{% if mentor.email2 %}You may have noticed that we provided 2 emails for your mentor. When you first reach out, please email both and ask which they prefer as their primary contact.
+
+{% endif %}
+If your mentor doesn't respond after a few tries, please wait until {{ followup_date }} before emailing us, and we'll do our best to assign you a new mentor.
+
+All the best,
+The Auxilium Team`;
+
+      document.getElementById('pe-mentor-template').value = PE_DEFAULT_MENTOR_TEMPLATE;
+      document.getElementById('pe-mentee-template').value = PE_DEFAULT_MENTEE_TEMPLATE;
+
+      function peReadFile(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsText(file);
+        });
+      }
+
+      function peParseExtraVars() {
+        const text = document.getElementById('pe-extra-vars').value;
+        const vars = {};
+        text.split('\n').forEach(line => {
+          const idx = line.indexOf('=');
+          if (idx === -1) return;
+          const key = line.slice(0, idx).trim();
+          const value = line.slice(idx + 1).trim();
+          if (key) vars[key] = value;
+        });
+        return vars;
+      }
+
+      function peEscapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      let peLastRequestBody = null;
+
+      document.getElementById('pe-preview-btn').onclick = async () => {
+        const fileInput = document.getElementById('pe-csv-file');
+        if (!fileInput.files.length) { alert('Choose a pairings CSV first.'); return; }
+        const csvText = await peReadFile(fileInput.files[0]);
+
+        const body = {
+          csv_text: csvText,
+          mentor_template: document.getElementById('pe-mentor-template').value,
+          mentee_template: document.getElementById('pe-mentee-template').value,
+          subject_template: document.getElementById('pe-subject-template').value,
+          extra_vars: peParseExtraVars(),
+        };
+        peLastRequestBody = body;
+
+        const r = await adminFetch(API + '/pairing-emails/preview', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body),
+        });
+
+        const summary = document.getElementById('pe-summary');
+        const list = document.getElementById('pe-preview-list');
+        const sendSection = document.getElementById('pe-send-section');
+
+        if (!r.ok) {
+          const err = await r.json().catch(() => ({}));
+          summary.style.display = 'block';
+          summary.style.color = 'var(--danger)';
+          summary.textContent = 'Error: ' + (err.detail || 'Could not render templates.');
+          list.innerHTML = '';
+          sendSection.style.display = 'none';
+          return;
+        }
+
+        const data = await r.json();
+        summary.style.display = 'block';
+        summary.style.color = 'var(--ink)';
+        summary.textContent = `${data.mentor_count} mentors -> ${data.email_count} emails total (mentor + mentee announcements). Nothing has been sent yet.`;
+
+        list.innerHTML = '';
+        data.emails.forEach(email => {
+          const card = document.createElement('div');
+          card.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:#fff';
+          card.innerHTML = `
+            <div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--muted);margin-bottom:6px">
+              <span><span class="badge ${email.recipient_type === 'mentor' ? 'yes' : 'no'}">${email.recipient_type}</span> ${peEscapeHtml(email.to)}</span>
+              <span>${peEscapeHtml(email.mentor_name)}${email.mentee_names.length ? ' / ' + email.mentee_names.map(peEscapeHtml).join(', ') : ''}</span>
+            </div>
+            <div style="font-weight:700;font-size:13px;margin-bottom:4px">${peEscapeHtml(email.subject)}</div>
+            <pre style="white-space:pre-wrap;font-family:var(--font-body);font-size:12.5px;margin:0;color:var(--ink)">${peEscapeHtml(email.body)}</pre>
+          `;
+          list.appendChild(card);
+        });
+
+        sendSection.style.display = data.email_count > 0 ? 'block' : 'none';
+        document.getElementById('pe-send-result').textContent = '';
+      };
+
+      async function peSend(scheduledAt) {
+        if (!peLastRequestBody) { alert('Click Preview first.'); return; }
+        const confirmText = document.getElementById('pe-confirm').value;
+        if (confirmText !== 'SEND') { alert('Type SEND (all caps) in the confirmation box first.'); return; }
+
+        const count = document.querySelectorAll('#pe-preview-list > div').length;
+        const label = scheduledAt ? `schedule ${count} emails for ${scheduledAt}` : `send ${count} emails RIGHT NOW`;
+        if (!confirm(`This will ${label} to real mentors and mentees. Are you sure?`)) return;
+
+        const body = { ...peLastRequestBody, confirm: 'SEND', scheduled_at: scheduledAt || null };
+        const resultEl = document.getElementById('pe-send-result');
+        resultEl.style.color = 'var(--ink)';
+        resultEl.textContent = 'Sending...';
+
+        const r = await adminFetch(API + '/pairing-emails/send', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(body),
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          resultEl.style.color = 'var(--danger)';
+          resultEl.textContent = 'Error: ' + (data.detail || 'Send failed.');
+          return;
+        }
+        const failedLines = data.results.filter(x => !x.ok).map(x => `${x.to}: ${x.detail}`);
+        resultEl.innerHTML = `<strong>${data.sent} sent, ${data.failed} failed.</strong>` +
+          (failedLines.length ? '<br>' + failedLines.map(peEscapeHtml).join('<br>') : '');
+      }
+
+      document.getElementById('pe-send-now-btn').onclick = () => peSend(null);
+      document.getElementById('pe-schedule-btn').onclick = () => {
+        const dt = document.getElementById('pe-schedule-at').value;
+        if (!dt) { alert('Pick a date/time first.'); return; }
+        peSend(new Date(dt).toISOString());
       };
 
       document.getElementById('refresh-bookings').onclick = loadBookings;
