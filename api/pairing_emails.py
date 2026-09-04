@@ -17,8 +17,13 @@ Template variables available:
     Mentee template : mentor (MentorGroup), mentee (Mentee), + extra_vars
     Subject template: same context as whichever email it's rendered for
 
-MentorGroup fields: name, email, email2, phone, grade, mentees
-Mentee fields:      name, email, email2, phone, grade, subjects
+MentorGroup fields: name, email, email2, phone, grade, mentees, first_name, all_emails
+Mentee fields:      name, email, email2, phone, grade, subjects, first_name, all_emails
+
+`first_name` is just `name.split()[0]` - use it for greetings ("Hello
+{{ mentor.first_name }},"). `all_emails` is every non-empty email on file
+(email + email2, or just email if there's no second one) - the actual send
+goes to everyone in that list, not just the first address.
 """
 
 from __future__ import annotations
@@ -33,17 +38,30 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import jinja2
+from jinja2.sandbox import SandboxedEnvironment
 
 from api.email_service import RESEND_API_URL, _credentials
 
 logger = logging.getLogger(__name__)
 
-_JINJA_ENV = jinja2.Environment(
+# SandboxedEnvironment, not a plain Environment: the template TEXT itself
+# comes from the admin's request body (it's what they're editing in the
+# admin panel), and .from_string() on attacker-controlled template text in a
+# plain Jinja2 Environment is a well-known RCE vector (dunder-attribute
+# gadgets like ''.__class__.__mro__[1].__subclasses__() reach arbitrary
+# Python objects). The sandbox blocks that while still allowing the
+# loops/conditionals these templates need.
+_JINJA_ENV = SandboxedEnvironment(
     autoescape=False,
     trim_blocks=True,
     lstrip_blocks=True,
     undefined=jinja2.StrictUndefined,
 )
+
+
+def _first_name(full_name: str) -> str:
+    parts = full_name.split()
+    return parts[0] if parts else full_name
 
 
 @dataclass
@@ -55,6 +73,14 @@ class Mentee:
     grade: str
     subjects: str
 
+    @property
+    def first_name(self) -> str:
+        return _first_name(self.name)
+
+    @property
+    def all_emails(self) -> list[str]:
+        return [e for e in (self.email, self.email2) if e]
+
 
 @dataclass
 class MentorGroup:
@@ -64,6 +90,14 @@ class MentorGroup:
     phone: str
     grade: str
     mentees: list[Mentee] = field(default_factory=list)
+
+    @property
+    def first_name(self) -> str:
+        return _first_name(self.name)
+
+    @property
+    def all_emails(self) -> list[str]:
+        return [e for e in (self.email, self.email2) if e]
 
 
 def _clean(value: str | None) -> str:
@@ -108,7 +142,7 @@ def parse_pairings_csv(csv_text: str) -> list[MentorGroup]:
 @dataclass
 class RenderedEmail:
     recipient_type: str  # "mentor" | "mentee"
-    to: str
+    to: list[str]  # every email on file for this person - see all_emails above
     subject: str
     body: str
     mentor_name: str
@@ -135,23 +169,23 @@ def render_emails(
 
     rendered: list[RenderedEmail] = []
     for mentor in mentors:
-        if mentor.email:
+        if mentor.all_emails:
             ctx = {"mentor": mentor, "mentees": mentor.mentees, **extra_vars}
             rendered.append(RenderedEmail(
                 recipient_type="mentor",
-                to=mentor.email,
+                to=mentor.all_emails,
                 subject=subject_tmpl.render(**ctx),
                 body=mentor_tmpl.render(**ctx),
                 mentor_name=mentor.name,
                 mentee_names=[m.name for m in mentor.mentees],
             ))
         for mentee in mentor.mentees:
-            if not mentee.email:
+            if not mentee.all_emails:
                 continue
             mctx = {"mentor": mentor, "mentee": mentee, **extra_vars}
             rendered.append(RenderedEmail(
                 recipient_type="mentee",
-                to=mentee.email,
+                to=mentee.all_emails,
                 subject=subject_tmpl.render(**mctx),
                 body=mentee_tmpl.render(**mctx),
                 mentor_name=mentor.name,
@@ -163,6 +197,10 @@ def render_emails(
 def send_rendered_email(email: RenderedEmail, scheduled_at: str | None = None) -> tuple[bool, str]:
     """Send (or, with `scheduled_at`, schedule) one rendered email via Resend.
 
+    Sends to every address in `email.to` in one call (Resend's `to` field
+    accepts a list) - a mentor/mentee with two emails on file gets both,
+    not just the first.
+
     `scheduled_at` is an ISO-8601 datetime string - Resend holds the email and
     delivers it at that time instead of immediately. Returns (ok, detail).
     """
@@ -171,12 +209,13 @@ def send_rendered_email(email: RenderedEmail, scheduled_at: str | None = None) -
         return False, "RESEND_API_KEY is not configured."
     api_key, from_email = creds
 
-    if not email.to or "@" not in email.to:
-        return False, f"Invalid recipient address: {email.to!r}"
+    valid_recipients = [addr for addr in email.to if addr and "@" in addr]
+    if not valid_recipients:
+        return False, f"No valid recipient address in {email.to!r}"
 
     payload: dict[str, Any] = {
         "from": from_email,
-        "to": [email.to],
+        "to": valid_recipients,
         "subject": email.subject,
         "text": email.body,
     }

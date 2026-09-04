@@ -168,11 +168,8 @@
           </div>
         </div>
 
-        <label>Extra template variables (one per line, <code>key=value</code> — e.g. cycle_start=July 5)</label>
-        <textarea id="pe-extra-vars" rows="4" style="width:100%;font-family:monospace;font-size:12.5px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-top:5px;box-sizing:border-box">cycle_start=
-cycle_end=
-session_start_window=
-followup_date=</textarea>
+        <label>Extra template variables (optional — one per line, <code>key=value</code>. The default templates below don't need any; this is only for custom templates that reference <code>{{ your_var }}</code>)</label>
+        <textarea id="pe-extra-vars" rows="3" style="width:100%;font-family:monospace;font-size:12.5px;padding:10px;border:1px solid var(--line);border-radius:10px;margin-top:5px;box-sizing:border-box"></textarea>
 
         <div>
           <button type="button" id="pe-preview-btn">Preview Emails</button>
@@ -199,15 +196,28 @@ followup_date=</textarea>
       let allMentors = [];
 
       // The admin panel requires an X-Admin-Key header (see api/admin_auth.py).
-      // Ask for it once, remember it for this browser, and re-ask if the
-      // server ever rejects it (wrong key, or it was rotated).
+      // Deliberately kept in a JS variable, NOT localStorage/sessionStorage:
+      // this page also renders mentor-supplied fields (name/subject/
+      // qualifications) elsewhere, and a persisted, JS-readable copy of this
+      // key would turn any future XSS in that rendering into full standing
+      // admin takeover instead of a one-off page defacement. You'll be asked
+      // for it again on every reload - that's the point.
+      let adminKeyMemory = null;
       function getAdminKey(forcePrompt = false) {
-        let key = localStorage.getItem('lumi_admin_key');
-        if (forcePrompt || !key) {
-          key = window.prompt('Enter the admin key:', key || '') || '';
-          localStorage.setItem('lumi_admin_key', key);
+        if (forcePrompt || !adminKeyMemory) {
+          adminKeyMemory = window.prompt('Enter the admin key:', adminKeyMemory || '') || '';
         }
-        return key;
+        return adminKeyMemory;
+      }
+
+      // Shared HTML-escaping helper - every place this page inserts
+      // externally-sourced text (mentor names/subjects/qualifications, CSV
+      // content in the pairing-email preview, etc.) via innerHTML MUST go
+      // through this first.
+      function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str == null ? '' : String(str);
+        return div.innerHTML;
       }
 
       async function adminFetch(url, options = {}) {
@@ -239,7 +249,7 @@ followup_date=</textarea>
 
         allMentors.forEach(m => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${m.name}</td><td>${m.grade}</td><td>${m.subject}</td><td>${m.qualifications}</td><td><span class="badge ${m.available?'yes':'no'}">${m.available? 'Available':'Unavailable'}</span></td><td></td>`;
+          tr.innerHTML = `<td>${escapeHtml(m.name)}</td><td>${escapeHtml(m.grade)}</td><td>${escapeHtml(m.subject)}</td><td>${escapeHtml(m.qualifications)}</td><td><span class="badge ${m.available?'yes':'no'}">${m.available? 'Available':'Unavailable'}</span></td><td></td>`;
           const td = tr.querySelector('td:last-child');
           const btn = document.createElement('button');
           btn.className = 'secondary';
@@ -261,7 +271,10 @@ followup_date=</textarea>
         bbody.innerHTML = '';
         data.forEach(b => {
           const tr = document.createElement('tr');
-          tr.innerHTML = `<td>${b.id}</td><td>${b.mentor_name}</td><td>${b.mentee_name}</td><td>${b.subject}</td><td>${Math.round((b.match_score||0)*100)}%</td><td>${b.slot_label || '—'}</td><td>${b.created_at}</td><td>${b.status||'active'}</td><td></td>`;
+          // mentee_name/mentor_name/subject/slot_label ultimately come from
+          // the public chat booking flow (end users typing their own name),
+          // so these must be escaped the same as anything else external.
+          tr.innerHTML = `<td>${b.id}</td><td>${escapeHtml(b.mentor_name)}</td><td>${escapeHtml(b.mentee_name)}</td><td>${escapeHtml(b.subject)}</td><td>${Math.round((b.match_score||0)*100)}%</td><td>${escapeHtml(b.slot_label || '—')}</td><td>${escapeHtml(b.created_at)}</td><td>${escapeHtml(b.status||'active')}</td><td></td>`;
           const td = tr.querySelector('td:last-child');
           if((b.status||'active') === 'active'){
             const cancel = document.createElement('button');
@@ -345,9 +358,15 @@ followup_date=</textarea>
       };
 
       // ── Pairing announcement emails ────────────────────────────────────
-      const PE_DEFAULT_MENTOR_TEMPLATE = `Hello {{ mentor.name }},
+      // Exact approved wording. The only dynamic parts are: the greeting
+      // (first name only), the repeated Mentee #N block for however many
+      // mentees a mentor actually has, and Email: vs Email #1:/Email #2:
+      // depending on whether a second address is actually on file. Cycle
+      // dates below are this cycle's real dates, written in literally -
+      // edit this text directly here (or in the textarea) for the next cycle.
+      const PE_DEFAULT_MENTOR_TEMPLATE = `Hello {{ mentor.first_name }},
 
-Thank you for applying to be a mentor with Auxilium. We're happy to have you and we're looking forward to you making a positive impact on other students' education. Your {{ "mentees are" if mentees|length > 1 else "mentee is" }} as follows.
+Thank you for applying to be a mentor with Auxilium. We’re happy to have you and we’re looking forward to you making a positive impact on other students’ education. Your mentee(s) are as follows.
 
 {% for mentee in mentees %}
 {% if mentees|length > 1 %}Mentee #{{ loop.index }}
@@ -360,20 +379,32 @@ Grade: {{ mentee.grade }}
 Subjects to mentor: {{ mentee.subjects }}
 
 {% endfor %}
-{% if mentees | selectattr("email2") | list | length > 0 %}
-You may have noticed that we provided 2 emails for {{ "some of your mentees" if mentees|length > 1 else "your mentee" }}. When you first reach out, please email both and ask which they prefer as their primary contact - we keep two on file because one is sometimes checked more often than the other.
+You may have noticed that we provided 2 emails for your mentee. When you first reach out to introduce yourself, please email both of those emails and ask which of the emails they prefer to use as their primary contact for future communication. We provided both because sometimes we have 2 emails on file, but they check one more frequently than the other.
 
-{% endif %}
-Please note that Auxilium is a weekly commitment and that you must meet at least once a week. Auxilium does one-on-one mentorships, so your weekly time commitment is one hour per mentee.
+Please note that Auxilium is a weekly commitment and that you must meet at least once a week. Auxilium does one-on-one mentorships, so if you have 2 mentees your weekly time commitment is 2 hours—one hour for each mentee separately (and thus 3 hours for 3 mentees, etc.). If you miss a week, please try to make it up the next week.
 
-This cycle starts on {{ cycle_start }} and ends on {{ cycle_end }}. Please email your {{ "mentees" if mentees|length > 1 else "mentee" }} and set up your first session for the week of {{ session_start_window }}. If they don't respond after a few tries, please wait until {{ followup_date }} before emailing us, and we'll assign a new pairing.
+You may mentor at whatever time and day is most convenient for both you and your mentee, and you may use whatever platform you both agree on (Google Meet, Zoom, Skype, etc.). You may use your time to help your mentee with schoolwork, teach structured lessons, give study advice, or a combination of any/all of these. It’s up to you, as long as you’re supporting your mentees’ education! If you’d like some guidance on how to structure lessons, we’ve created a Mentor Training folder that includes a video, slideshow, and sample English lesson to help you get started.
+
+Please note that the expectation for both mentors and mentees is to have your cameras turned on throughout all meetings. This is to facilitate better communication in your one-on-one mentorship.
+
+Many mentors create their own materials (worksheets, slideshows, etc.) to help structure weekly lessons. We’ve created a folder for mentors to share these resources so that everyone can help and support each other. This is another way for you to gain volunteer hours outside of weekly lessons; each material submission is worth 1 hour.
+
+You can submit these resources using this google form. Please submit this form MULTIPLE times if you want to submit MORE THAN ONE material (ie. if you're submitting 4 worksheets, submit the form 4 times and you will receive 4 hours at the end of the cycle). Please NAME each file with the following format: GradeLevel_Subject_TopicCovered (eg. Grade5_Math_AddingFractions). The folder containing submitted materials can be found here.
+
+This cycle starts on July 5 and ends on August 26. Please email your mentee(s) and set up your first session to take place between the week of July 5-12. If your mentee does not respond to you, please follow up a few times via email. If they still do not respond to your emails, you may try texting their phone number (as sometimes emails may get sent to their spam folder by accident). If your mentee does not respond to your emails or texts, please wait until July 13 to email us. Then, we will assign you a new mentee. Please do not email us sooner than July 13 because we do not want to reassign pairings too soon. This can cause issues later on if your original mentee ends up responding.
+
+If your original mentee responds after we’ve assigned you a new mentee, you may email them back and tell them that they have lost their spot due to lack of communication. However, this is the worst case scenario. Most of our pairings run quite smoothly, so go ahead and reach out to your mentee to get started!
+
+We will send out mentor logs every 2 weeks for you to log your hours and progress. At the end of the cycle, we will tally up your total hours and send you an email to confirm them. Only then may you submit them.
+
+Final note, since this is a summer cycle, we are aware that many people are unavailable during certain periods due to travel, summer school, or other commitments. Thus, we did our best to optimize pairings based on the availabilities stated in the mentor/mentee registration forms. Please contact your mentee to let them know of your specific time restrictions to find a time that works best for both of you.
 
 Feel free to reach out to us if you have any questions. Happy mentoring!
 
 All the best,
 The Auxilium Team`;
 
-      const PE_DEFAULT_MENTEE_TEMPLATE = `Hello {{ mentee.name }},
+      const PE_DEFAULT_MENTEE_TEMPLATE = `Hello {{ mentee.first_name }},
 
 Thank you for registering to be a mentee for Auxilium. Your assigned mentor is as follows.
 
@@ -383,12 +414,15 @@ Email #2: {{ mentor.email2 }}
 {% else %}Email: {{ mentor.email }}
 {% endif %}Phone number: {{ mentor.phone }}
 
-This cycle starts on {{ cycle_start }} and ends on {{ cycle_end }}. Please email your mentor and set up your first session for the week of {{ session_start_window }}. Please note that the expectation for both mentors and mentees is to have your cameras turned on throughout all meetings.
+This cycle starts on July 5 and ends on August 26. Please email your mentor and set up your first session to take place between the week of July 5-12. Please note that the expectation for both mentors and mentees is to have your cameras turned on throughout all meetings. This is to facilitate better communication in your one-on-one mentorship.
 
-{% if mentor.email2 %}You may have noticed that we provided 2 emails for your mentor. When you first reach out, please email both and ask which they prefer as their primary contact.
+You may have noticed that we provided 2 emails for your mentor. When you first reach out to introduce yourself, please email both of those emails and ask which of the emails they prefer to use as their primary contact for future communication. We provided both because sometimes we have 2 emails on file, but they check one more frequently than the other.
 
-{% endif %}
-If your mentor doesn't respond after a few tries, please wait until {{ followup_date }} before emailing us, and we'll do our best to assign you a new mentor.
+If your mentor does not respond to you, please follow up a few times via email. If they still do not respond to your emails, you may try texting their phone number (as sometimes emails may get sent to their spam folder by accident). If your mentor does not respond to your emails or texts, please wait until July 13 to email us. Then, we will do our best to assign you a new mentor. Please do not email us sooner than July 13 because we do not want to reassign pairings too soon. This can cause issues later on if your original mentor ends up responding.
+
+That being said, reassigning pairings is the worst case scenario. Most of our pairings run quite smoothly, so go ahead and reach out to your mentee to get started! We hope you’re as excited as we are to start your learning journey.
+
+Final note, since this is a summer cycle, we are aware that many people are unavailable during certain periods due to travel, summer school, or other commitments. Thus, we did our best to optimize pairings based on the availabilities stated in the mentor/mentee registration forms. Please contact your mentee to let them know of your specific time restrictions to find a time that works best for both of you.
 
 All the best,
 The Auxilium Team`;
@@ -416,12 +450,6 @@ The Auxilium Team`;
           if (key) vars[key] = value;
         });
         return vars;
-      }
-
-      function peEscapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
       }
 
       let peLastRequestBody = null;
@@ -471,11 +499,11 @@ The Auxilium Team`;
           card.style.cssText = 'border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:#fff';
           card.innerHTML = `
             <div style="display:flex;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--muted);margin-bottom:6px">
-              <span><span class="badge ${email.recipient_type === 'mentor' ? 'yes' : 'no'}">${email.recipient_type}</span> ${peEscapeHtml(email.to)}</span>
-              <span>${peEscapeHtml(email.mentor_name)}${email.mentee_names.length ? ' / ' + email.mentee_names.map(peEscapeHtml).join(', ') : ''}</span>
+              <span><span class="badge ${email.recipient_type === 'mentor' ? 'yes' : 'no'}">${email.recipient_type}</span> ${escapeHtml(email.to.join(', '))}</span>
+              <span>${escapeHtml(email.mentor_name)}${email.mentee_names.length ? ' / ' + email.mentee_names.map(escapeHtml).join(', ') : ''}</span>
             </div>
-            <div style="font-weight:700;font-size:13px;margin-bottom:4px">${peEscapeHtml(email.subject)}</div>
-            <pre style="white-space:pre-wrap;font-family:var(--font-body);font-size:12.5px;margin:0;color:var(--ink)">${peEscapeHtml(email.body)}</pre>
+            <div style="font-weight:700;font-size:13px;margin-bottom:4px">${escapeHtml(email.subject)}</div>
+            <pre style="white-space:pre-wrap;font-family:var(--font-body);font-size:12.5px;margin:0;color:var(--ink)">${escapeHtml(email.body)}</pre>
           `;
           list.appendChild(card);
         });
@@ -509,9 +537,9 @@ The Auxilium Team`;
           resultEl.textContent = 'Error: ' + (data.detail || 'Send failed.');
           return;
         }
-        const failedLines = data.results.filter(x => !x.ok).map(x => `${x.to}: ${x.detail}`);
+        const failedLines = data.results.filter(x => !x.ok).map(x => `${(x.to || []).join(', ')}: ${x.detail}`);
         resultEl.innerHTML = `<strong>${data.sent} sent, ${data.failed} failed.</strong>` +
-          (failedLines.length ? '<br>' + failedLines.map(peEscapeHtml).join('<br>') : '');
+          (failedLines.length ? '<br>' + failedLines.map(escapeHtml).join('<br>') : '');
       }
 
       document.getElementById('pe-send-now-btn').onclick = () => peSend(null);
