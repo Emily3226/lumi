@@ -32,9 +32,12 @@ import csv
 import io
 import json
 import logging
+import smtplib
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import Any
 
 import jinja2
@@ -194,6 +197,22 @@ def render_emails(
     return rendered
 
 
+def _as_black_html(body: str) -> str:
+    """Wrap plain-text body as HTML with an explicit black color.
+
+    Plain-text-only emails render in Gmail's default gray body color in some
+    clients/themes; sending a styled HTML alternative alongside the plain
+    text fixes that without changing what the plain-text fallback looks like.
+    """
+    import html as _html
+
+    escaped = _html.escape(body)
+    return (
+        '<div style="color:#000000; font-family: Arial, Helvetica, sans-serif; '
+        f'white-space: pre-wrap;">{escaped}</div>'
+    )
+
+
 def send_rendered_email(email: RenderedEmail, scheduled_at: str | None = None) -> tuple[bool, str]:
     """Send (or, with `scheduled_at`, schedule) one rendered email via Resend.
 
@@ -218,6 +237,7 @@ def send_rendered_email(email: RenderedEmail, scheduled_at: str | None = None) -
         "to": valid_recipients,
         "subject": email.subject,
         "text": email.body,
+        "html": _as_black_html(email.body),
     }
     if scheduled_at:
         payload["scheduled_at"] = scheduled_at
@@ -241,4 +261,42 @@ def send_rendered_email(email: RenderedEmail, scheduled_at: str | None = None) -
         detail = exc.read().decode("utf-8", errors="replace")
         return False, f"HTTP {exc.code}: {detail[:300]}"
     except Exception as exc:  # pragma: no cover - network errors
+        return False, str(exc)
+
+
+def send_rendered_email_via_gmail(
+    email: RenderedEmail,
+    gmail_address: str,
+    gmail_app_password: str,
+) -> tuple[bool, str]:
+    """Send one rendered email via Gmail SMTP, authenticated as gmail_address.
+
+    Use this instead of send_rendered_email() when the email must actually
+    come from a specific Gmail address: Resend can only send from a domain
+    you've verified there via DNS, and gmail.com can't be verified that way
+    since Google (not you) controls its DNS.
+
+    No scheduled-delivery support - Gmail SMTP sends the moment this is
+    called, so a future send time has to be enforced by whatever calls this
+    (e.g. a Task Scheduler job that runs at the target time), unlike
+    send_rendered_email()'s Resend-native `scheduled_at`.
+    """
+    valid_recipients = [addr for addr in email.to if addr and "@" in addr]
+    if not valid_recipients:
+        return False, f"No valid recipient address in {email.to!r}"
+
+    msg = MIMEMultipart("alternative")
+    msg["From"] = gmail_address
+    msg["To"] = ", ".join(valid_recipients)
+    msg["Subject"] = email.subject
+    msg.attach(MIMEText(email.body, "plain"))
+    msg.attach(MIMEText(_as_black_html(email.body), "html"))
+
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
+            server.starttls()
+            server.login(gmail_address, gmail_app_password)
+            server.sendmail(gmail_address, valid_recipients, msg.as_string())
+        return True, "sent"
+    except Exception as exc:
         return False, str(exc)

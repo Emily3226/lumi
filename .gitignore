@@ -66,3 +66,7 @@ frontend/generated/
 # Downloaded embedding model weights (see rag/embeddings.py) - large binary
 # files, re-downloadable via scripts/warm_embedding_cache.py
 data/embedding_cache/
+
+.env
+data/*.db
+data/pairings.csv
